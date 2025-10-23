@@ -1,9 +1,9 @@
-# agent_Oracle
+# Agent_Oracle
 Agent that will have its own memory about you
 
 # [Oracle]: An Intelligent Conversational AI Agent
 
-![Project Status: In Development](https://github.com/patchen0518/agent_Oracle)
+![Project Status: In Development](https://img.shields.io/badge/status-Development-blue)
 
 This project is an intelligent, conversational AI agent designed to provide context-aware responses and access external information. It's built with a modern Python backend and a responsive React frontend.
 
@@ -58,6 +58,7 @@ The project is built on a decoupled frontend/backend architecture.
 * **Performance:** We use high-performance, asynchronous frameworks (`FastAPI`, `uvicorn`) and efficient frontend libraries (`React`) to ensure a responsive user experience.
 * **Scalability:** The architecture is designed to be stateless (where possible) to support future scaling (e.g., containerization, serverless deployment).
 * **Testability:** Logic, especially in the backend, is written in a way that encourages unit and integration testing.
+* **Current Documentation:** All API integrations must reference the latest official documentation via Context 7 (MCP) to ensure implementations follow current best practices.
 
 ---
 
@@ -65,7 +66,7 @@ The project is built on a decoupled frontend/backend architecture.
 
 | Component | Technology | Package(s) / Tool(s) |
 | :--- | :--- | :--- |
-| **Backend** | Python 3.11+ | `fastapi`, `uvicorn`, `google-generativeai`, `python-dotenv` |
+| **Backend** | Python 3.14+ | `fastapi`, `uvicorn`, `google-generativeai`, `python-dotenv` |
 | **Frontend** | JavaScript / React | `react`, `vite`, `axios` |
 | **Package Mgmt** | Python | `uv` |
 | **Package Mgmt** | Node.js | `npm` |
@@ -73,13 +74,47 @@ The project is built on a decoupled frontend/backend architecture.
 
 ---
 
+## � Develop ment Standards
+
+### Library and API Integration Requirements
+
+**MANDATORY**: Before implementing any library integration or external API, developers must:
+
+1. **Use Context 7 (MCP)** to lookup the latest official documentation
+2. **Verify current best practices** and check for any recent changes or deprecations
+3. **Implement based on latest specifications** found in the documentation
+4. **Document the library/API version** and retrieval date in code comments
+
+This ensures all implementations follow current standards and avoid issues with outdated patterns.
+
+### Key Libraries and APIs Requiring Context 7 Lookup
+
+#### Backend
+- **FastAPI**: Routing, middleware, validation patterns
+- **Gemini API**: Authentication, chat sessions, message formatting, error handling
+- **Pydantic**: Model validation and serialization
+- **pytest**: Testing patterns and fixtures
+
+#### Frontend
+- **React**: Hooks, components, state management patterns
+- **Vite**: Build configuration and development setup
+- **Axios**: HTTP client configuration and best practices
+- **React Testing Library**: Component testing patterns
+
+#### Future Integrations
+- **LangChain** (MVP 1.2+): Agent orchestration and framework patterns
+- **Web Search APIs** (MVP 1.1+): Integration and usage patterns
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-* Python 3.11+ and `uv`
+* Python 3.14+ and `uv` (as specified in .python-version)
 * Node.js 18+ and `npm`
 * A **Gemini API Key** from [Google AI Studio](https://aistudio.google.com/app/apikey)
+* **Context 7 (MCP)** configured for API documentation lookup
 
 ### Configuration
 
@@ -109,3 +144,47 @@ uv pip install -r requirements.txt
 
 # Run the FastAPI server
 uvicorn main:app --reload
+```
+
+
+### 2. Running the Frontend App
+```bash
+# Open a new terminal
+# Navigate to the frontend directory
+cd frontend
+
+# Install Node.js dependencies
+npm install
+
+# Run the React development server
+npm run dev
+
+The application will be running on http://localhost:5173.
+```
+
+### API Endpoints
+
+```ini
+POST /chat
+```
+
+Description: Sends a user message and the current conversation history to the agent and receives a response.
+
+Request Body:
+```JSON
+{
+  "message": "What is FastAPI?",
+  "history": [
+    { "role": "user", "parts": "Hello" },
+    { "role": "model", "parts": "Hi there! How can I help you today?" }
+  ]
+}
+```
+
+Response Body:
+```JSON
+{
+  "response": "FastAPI is a modern, fast (high-performance), web framework for building APIs with Python 3.7+ based on standard Python type hints."
+}
+```
+---
