@@ -62,6 +62,33 @@ The project is built on a decoupled frontend/backend architecture.
 
 ---
 
+## 📁 Project Structure
+
+```
+oracle/
+├── backend/                    # FastAPI backend application
+│   ├── api/v1/                # API routes and endpoints
+│   ├── models/                # Pydantic data models
+│   ├── services/              # Business logic and external integrations
+│   ├── tests/                 # Backend tests
+│   ├── main.py               # FastAPI application entry point
+│   └── .env.example          # Environment variables template
+├── frontend/                  # React frontend application
+│   ├── src/
+│   │   ├── components/       # React components
+│   │   ├── services/         # API communication
+│   │   └── test/            # Test setup
+│   ├── package.json         # Node.js dependencies and scripts
+│   └── vite.config.js       # Vite configuration
+├── scripts/                   # Development scripts
+│   └── dev-setup.sh         # Automated development setup
+├── pyproject.toml            # Python project configuration
+├── PROJECT_STRUCTURE.md      # Detailed structure documentation
+└── README.md                 # Project documentation
+```
+
+---
+
 ## 🛠️ Tech Stack
 
 | Component | Technology | Package(s) / Tool(s) |
@@ -126,40 +153,77 @@ This ensures all implementations follow current standards and avoid issues with 
     GEMINI_API_KEY="YOUR_API_KEY_HERE"
     ```
 
-### 1. Running the Backend Server
+### Quick Setup
 
 ```bash
-# Navigate to the backend directory
-cd backend
+# Run the automated setup script
+./scripts/dev-setup.sh
 
-# Create a virtual environment using uv
-uv venv
-
-# Activate the environment
-source .venv/bin/activate
-# (On Windows: .\.venv\Scripts\activate)
-
-# Install Python dependencies
-uv pip install -r requirements.txt 
-
-# Run the FastAPI server
-uvicorn main:app --reload
+# Edit backend/.env and add your Gemini API key
+# GEMINI_API_KEY=your_api_key_here
 ```
 
+### Manual Setup
 
-### 2. Running the Frontend App
 ```bash
-# Open a new terminal
-# Navigate to the frontend directory
+# Create virtual environment and install backend dependencies
+uv venv
+uv pip install -e ".[dev]"
+
+# Set up environment files
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+# Edit backend/.env with your Gemini API key
+
+# Install frontend dependencies
 cd frontend
-
-# Install Node.js dependencies
 npm install
+cd ..
+```
 
-# Run the React development server
+### Running the Application
+
+```bash
+# Terminal 1: Start backend
+cd backend
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Terminal 2: Start frontend
+cd frontend
 npm run dev
+```
 
 The application will be running on http://localhost:5173.
+
+### API Documentation
+
+When the backend is running, FastAPI automatically generates interactive API documentation:
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+### Testing
+
+#### Backend Tests
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=backend
+
+# Run specific test file
+uv run pytest backend/tests/test_main.py -v
+```
+
+#### Frontend Tests
+```bash
+cd frontend
+
+# Run tests once
+npm test
+
+# Run tests in watch mode
+npm run test:watch
 ```
 
 ### API Endpoints

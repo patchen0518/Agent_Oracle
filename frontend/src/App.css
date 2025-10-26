@@ -1,0 +1,78 @@
+/* Oracle Chat App Styles */
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  background-color: #1a1a1a;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #333;
+}
+
+.app-header h1 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.5rem;
+}
+
+.status {
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.status.checking {
+  background-color: #fbbf24;
+  color: #92400e;
+}
+
+.status.connected {
+  background-color: #10b981;
+  color: #065f46;
+}
+
+.status.disconnected {
+  background-color: #ef4444;
+  color: #991b1b;
+}
+
+.app-main {
+  flex: 1;
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Component placeholders */
+.chat-interface,
+.message-input,
+.message {
+  margin-bottom: 2rem;
+  padding: 1rem;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background-color: #2a2a2a;
+}
+
+.chat-interface h2,
+.message-input h3,
+.message h4 {
+  margin-top: 0;
+  color: #fff;
+}
+
+.chat-interface p,
+.message-input p,
+.message p {
+  color: #ccc;
+  margin-bottom: 0;
+}
