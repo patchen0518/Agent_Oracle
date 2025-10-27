@@ -22,7 +22,7 @@ class TestGeminiClient:
         """Test client initialization with explicit API key."""
         with patch('backend.services.gemini_client.genai.Client') as mock_client:
             client = GeminiClient(api_key="test-key")
-            assert client.model == "gemini-2.0-flash-001"
+            assert client.model == "gemini-2.5-flash"
             mock_client.assert_called_once_with(api_key="test-key")
     
     def test_init_with_env_var(self):
@@ -337,7 +337,7 @@ class TestChatService:
         """Test session information retrieval."""
         info = self.service.get_session_info()
         
-        assert info["model"] == "gemini-2.0-flash-001"
+        assert info["model"] == "gemini-2.5-flash"
         assert info["active_sessions"] == 0
         assert info["service_status"] == "active"
     

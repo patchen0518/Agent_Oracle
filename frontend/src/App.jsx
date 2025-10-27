@@ -4,7 +4,9 @@
 import React, { useState, useEffect } from 'react'
 import ChatInterface from './components/ChatInterface'
 import MessageInput from './components/MessageInput'
+import ErrorDisplay from './components/ErrorDisplay'
 import { checkHealth, postChatMessage } from './services/api'
+import useErrorHandler from './hooks/useErrorHandler'
 import './App.css'
 
 // Error Boundary component for handling unhandled errors
@@ -45,8 +47,18 @@ function App() {
   // Chat state management
   const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState(null)
   const [backendStatus, setBackendStatus] = useState('checking')
+  const [connectionError, setConnectionError] = useState(null)
+  
+  // Enhanced error handling
+  const { 
+    error, 
+    errorType, 
+    canRetry, 
+    handleError, 
+    clearError, 
+    retry 
+  } = useErrorHandler()
 
   useEffect(() => {
     // Check backend health on app load
@@ -54,13 +66,20 @@ function App() {
       try {
         await checkHealth()
         setBackendStatus('connected')
+        setConnectionError(null)
       } catch (error) {
         setBackendStatus('disconnected')
+        setConnectionError('Backend server is not available')
         console.error('Backend health check failed:', error.message)
       }
     }
 
     checkBackendHealth()
+    
+    // Set up periodic health checks
+    const healthCheckInterval = setInterval(checkBackendHealth, 30000) // Check every 30 seconds
+    
+    return () => clearInterval(healthCheckInterval)
   }, [])
 
   // Handle sending a new message
@@ -77,7 +96,7 @@ function App() {
     
     setMessages(prev => [...prev, userMessage])
     setIsLoading(true)
-    setError(null)
+    clearError()
 
     try {
       // Prepare conversation history for API
@@ -103,14 +122,40 @@ function App() {
       setMessages(prev => [...prev, agentMessage])
     } catch (err) {
       console.error('Failed to send message:', err)
-      setError('Failed to send message. Please try again.')
+      handleError(err)
     } finally {
       setIsLoading(false)
     }
   }
 
-  // Clear error state
-  const clearError = () => setError(null)
+  // Retry sending the last message
+  const handleRetry = async () => {
+    if (messages.length === 0) return
+    
+    // Find the last user message
+    const lastUserMessage = [...messages].reverse().find(msg => msg.role === 'user')
+    if (lastUserMessage) {
+      // Remove any agent messages after the last user message
+      const lastUserIndex = messages.findIndex(msg => msg.id === lastUserMessage.id)
+      setMessages(prev => prev.slice(0, lastUserIndex + 1))
+      
+      // Retry with the enhanced retry mechanism
+      await retry(() => handleSendMessage(lastUserMessage.content))
+    }
+  }
+
+  // Reconnect to backend
+  const handleReconnect = async () => {
+    setBackendStatus('checking')
+    try {
+      await checkHealth()
+      setBackendStatus('connected')
+      setConnectionError(null)
+    } catch (error) {
+      setBackendStatus('disconnected')
+      setConnectionError('Failed to reconnect to backend')
+    }
+  }
 
   return (
     <ErrorBoundary>
@@ -123,11 +168,29 @@ function App() {
         </header>
         
         <main className="app-main">
+          {/* Connection error display */}
+          {connectionError && (
+            <ErrorDisplay
+              error={connectionError}
+              type="network"
+              onRetry={handleReconnect}
+              onDismiss={() => setConnectionError(null)}
+            />
+          )}
+          
+          {/* Chat error display */}
+          {error && (
+            <ErrorDisplay
+              error={error}
+              type={errorType}
+              onRetry={canRetry ? handleRetry : null}
+              onDismiss={clearError}
+            />
+          )}
+          
           <ChatInterface 
             messages={messages}
             isLoading={isLoading}
-            error={error}
-            onClearError={clearError}
           />
           <MessageInput 
             onSendMessage={handleSendMessage}

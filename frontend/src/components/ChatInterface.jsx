@@ -4,7 +4,7 @@
 import React, { useEffect, useRef } from 'react'
 import Message from './Message'
 
-const ChatInterface = ({ messages, isLoading, error, onClearError }) => {
+const ChatInterface = ({ messages, isLoading }) => {
   const messagesEndRef = useRef(null)
   const chatContainerRef = useRef(null)
 
@@ -30,22 +30,6 @@ const ChatInterface = ({ messages, isLoading, error, onClearError }) => {
 
   return (
     <div className="chat-interface">
-      {/* Error display */}
-      {error && (
-        <div className="error-banner">
-          <div className="error-content">
-            <span className="error-message">{error}</span>
-            <button 
-              onClick={onClearError}
-              className="error-dismiss"
-              aria-label="Dismiss error"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Messages container */}
       <div 
         ref={chatContainerRef}

@@ -44,21 +44,42 @@ apiClient.interceptors.response.use(
   },
   function onRejected(error) {
     // Enhanced error handling based on latest axios patterns
+    const enhancedError = new Error()
+    
     if (error.response) {
       // Server responded with error status
+      enhancedError.response = error.response
+      enhancedError.message = error.response.data?.detail || `HTTP ${error.response.status}`
+      
       console.error('API Response Error:', {
         status: error.response.status,
         data: error.response.data,
         url: error.config?.url
       })
     } else if (error.request) {
-      // Request made but no response received
+      // Request made but no response received (network error)
+      enhancedError.request = error.request
+      enhancedError.message = 'Network error - unable to reach server'
+      
       console.error('API Network Error:', error.message)
+    } else if (error.code === 'ECONNABORTED') {
+      // Request timeout
+      enhancedError.code = 'ECONNABORTED'
+      enhancedError.message = 'Request timeout - server took too long to respond'
+      
+      console.error('API Timeout Error:', error.message)
     } else {
       // Error in request setup
+      enhancedError.message = error.message || 'Request configuration error'
+      
       console.error('API Request Setup Error:', error.message)
     }
-    return Promise.reject(error)
+    
+    // Preserve original error properties
+    enhancedError.config = error.config
+    enhancedError.isAxiosError = error.isAxiosError
+    
+    return Promise.reject(enhancedError)
   }
 )
 
@@ -68,21 +89,45 @@ export const postChatMessage = async (requestData) => {
     const response = await apiClient.post('/api/v1/chat', requestData)
     return response.data
   } catch (error) {
-    // Enhanced error handling following latest axios error structure
-    let errorMessage = 'Failed to send message'
+    // Enhanced error handling with specific error types
+    const enhancedError = new Error()
     
     if (error.response) {
       // Server responded with error status
-      errorMessage = error.response.data?.detail || `Server error: ${error.response.status}`
+      const status = error.response.status
+      const data = error.response.data
+      
+      enhancedError.response = error.response
+      
+      if (status === 400) {
+        enhancedError.message = data?.detail || 'Invalid message format'
+      } else if (status === 401) {
+        enhancedError.message = 'Authentication failed - API key invalid'
+      } else if (status === 429) {
+        enhancedError.message = 'Rate limit exceeded - please wait before sending another message'
+      } else if (status === 502) {
+        enhancedError.message = 'AI service temporarily unavailable'
+      } else if (status === 503) {
+        enhancedError.message = 'Service temporarily unavailable'
+      } else if (status >= 500) {
+        enhancedError.message = 'Server error - please try again later'
+      } else {
+        enhancedError.message = data?.detail || `Server error: ${status}`
+      }
     } else if (error.request) {
       // Network error
-      errorMessage = 'Network error - please check your connection'
+      enhancedError.request = error.request
+      enhancedError.message = 'Unable to connect to server - check your internet connection'
+    } else if (error.code === 'ECONNABORTED') {
+      // Timeout error
+      enhancedError.code = 'ECONNABORTED'
+      enhancedError.message = 'Request timed out - the server is taking too long to respond'
     } else {
       // Request setup error
-      errorMessage = error.message || 'Request failed'
+      enhancedError.message = error.message || 'Failed to send message'
     }
     
-    throw new Error(errorMessage)
+    throw enhancedError
   }
 }
 
@@ -92,7 +137,19 @@ export const checkHealth = async () => {
     const response = await apiClient.get('/health')
     return response.data
   } catch (error) {
-    throw new Error('Backend is not available')
+    const enhancedError = new Error()
+    
+    if (error.response) {
+      enhancedError.response = error.response
+      enhancedError.message = `Backend unhealthy (HTTP ${error.response.status})`
+    } else if (error.request) {
+      enhancedError.request = error.request
+      enhancedError.message = 'Backend server is not reachable'
+    } else {
+      enhancedError.message = 'Health check failed'
+    }
+    
+    throw enhancedError
   }
 }
 
