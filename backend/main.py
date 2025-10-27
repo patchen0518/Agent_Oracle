@@ -2,7 +2,11 @@
 # Based on FastAPI v0.115.13+ documentation (Context 7 lookup: 2025-01-26)
 
 import os
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
+
+# Load environment variables from .env file
+load_dotenv()
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
