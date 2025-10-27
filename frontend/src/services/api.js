@@ -39,12 +39,9 @@ apiClient.interceptors.response.use(
 )
 
 // Chat API functions
-export const postChatMessage = async (message, history = []) => {
+export const postChatMessage = async (requestData) => {
   try {
-    const response = await apiClient.post('/api/v1/chat', {
-      message,
-      history,
-    })
+    const response = await apiClient.post('/api/v1/chat', requestData)
     return response.data
   } catch (error) {
     throw new Error(error.response?.data?.detail || 'Failed to send message')
