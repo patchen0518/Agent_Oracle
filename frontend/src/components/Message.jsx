@@ -1,9 +1,9 @@
 // Individual message component for displaying chat messages
 // Based on React v19+ documentation (Context 7 lookup: 2025-01-27)
 
-import React from 'react'
+import React, { memo } from 'react'
 
-const Message = ({ message }) => {
+const Message = memo(({ message }) => {
   const { role, content, timestamp } = message
 
   // Format timestamp for display
@@ -83,6 +83,6 @@ const Message = ({ message }) => {
       </div>
     </div>
   )
-}
+})
 
 export default Message
