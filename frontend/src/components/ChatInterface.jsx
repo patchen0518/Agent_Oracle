@@ -1,7 +1,7 @@
 // Chat interface component for displaying message history
 // Based on React v19+ documentation (Context 7 lookup: 2025-01-27)
 
-import React, { useEffect, useRef, useState, useCallback, memo } from 'react'
+import { useEffect, useRef, useState, useCallback, memo } from 'react'
 import Message from './Message'
 
 const ChatInterface = memo(({ messages, isLoading }) => {
@@ -10,10 +10,11 @@ const ChatInterface = memo(({ messages, isLoading }) => {
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [isUserScrolling, setIsUserScrolling] = useState(false)
 
-  // Auto-scroll to latest message when new messages are added (only if user isn't scrolling)
+  // Auto-scroll to latest message when new messages are added (only if user is at bottom)
   useEffect(() => {
-    if (!isUserScrolling && messagesEndRef.current && messagesEndRef.current.scrollIntoView) {
-      messagesEndRef.current.scrollIntoView({ 
+    // Only auto-scroll if user is at the bottom (not scrolled up)
+    if (!isUserScrolling && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({
         behavior: 'smooth',
         block: 'end'
       })
@@ -25,18 +26,22 @@ const ChatInterface = memo(({ messages, isLoading }) => {
     if (!chatContainerRef.current) return
 
     const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50 // 50px threshold
-    
-    setShowScrollButton(!isAtBottom && messages.length > 3)
-    
-    // Detect if user is actively scrolling
-    setIsUserScrolling(!isAtBottom)
-    
-    // Clear user scrolling flag after a delay
-    clearTimeout(handleScroll.timeoutId)
-    handleScroll.timeoutId = setTimeout(() => {
-      setIsUserScrolling(false)
-    }, 1000)
+
+    // More reliable scroll detection using percentage-based calculation
+    const scrollPercentage = (scrollTop + clientHeight) / scrollHeight
+    const isAtBottom = scrollPercentage > 0.95 // 95% threshold (more lenient)
+
+    // Alternative: Also check with pixel threshold for very small content
+    const pixelThreshold = scrollHeight - scrollTop - clientHeight < 10 // 10px threshold (more lenient)
+    const isAtBottomFinal = isAtBottom || pixelThreshold
+
+    // Show button when not at bottom and have enough messages
+    const shouldShowButton = !isAtBottomFinal && messages.length > 2
+    setShowScrollButton(shouldShowButton)
+
+    // Only set user scrolling to false when actually at bottom
+    // Don't use timeout - let user control when they want to see new messages
+    setIsUserScrolling(!isAtBottomFinal)
   }, [messages.length])
 
   // Add scroll listener
@@ -48,13 +53,24 @@ const ChatInterface = memo(({ messages, isLoading }) => {
     }
   }, [handleScroll])
 
+  // Check scroll position when messages change
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      // Small delay to ensure DOM is updated
+      setTimeout(() => {
+        handleScroll()
+      }, 100)
+    }
+  }, [messages, handleScroll])
+
   // Handle scroll to bottom manually
   const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current && messagesEndRef.current.scrollIntoView) {
-      messagesEndRef.current.scrollIntoView({ 
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({
         behavior: 'smooth',
         block: 'end'
       })
+      // Reset user scrolling state so auto-scroll resumes
       setIsUserScrolling(false)
     }
   }, [])
@@ -62,7 +78,7 @@ const ChatInterface = memo(({ messages, isLoading }) => {
   return (
     <div className="chat-interface">
       {/* Messages container */}
-      <div 
+      <div
         ref={chatContainerRef}
         className="messages-container"
       >
@@ -81,7 +97,7 @@ const ChatInterface = memo(({ messages, isLoading }) => {
                 message={message}
               />
             ))}
-            
+
             {/* Loading indicator */}
             {isLoading && (
               <div className="loading-message">
@@ -97,7 +113,7 @@ const ChatInterface = memo(({ messages, isLoading }) => {
             )}
           </div>
         )}
-        
+
         {/* Invisible element to scroll to */}
         <div ref={messagesEndRef} />
       </div>
