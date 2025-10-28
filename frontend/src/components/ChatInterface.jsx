@@ -85,7 +85,7 @@ const ChatInterface = memo(({ messages, isLoading }) => {
         {messages.length === 0 && !isLoading ? (
           <div className="empty-state">
             <div className="empty-content">
-              <h3>Welcome to Oracle Chat</h3>
+              <h3>This is Oracle</h3>
               <p>Start a conversation by typing a message below.</p>
             </div>
           </div>

@@ -161,7 +161,7 @@ function App() {
     <ErrorBoundary>
       <div className="app">
         <header className="app-header">
-          <h1>Oracle Chat</h1>
+          <h1>Oracle</h1>
           <div className={`status ${backendStatus}`}>
             Backend: {backendStatus}
           </div>

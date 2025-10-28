@@ -2,8 +2,20 @@
 
 .app {
   min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5vh 5vw;
+  box-sizing: border-box;
+}
+
+.app>* {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .app-header {
@@ -13,6 +25,8 @@
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid #333;
+  border-radius: 12px 12px 0 0;
+  flex-shrink: 0;
 }
 
 .app-header h1 {
@@ -46,17 +60,18 @@
 
 .app-main {
   flex: 1;
-  padding: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  min-height: 0;
 }
 
 /* Chat Interface Styles */
 .chat-interface {
   position: relative;
-  height: 60vh;
-  min-height: 400px;
+  flex: 1;
+  min-height: 0;
   margin-bottom: 1rem;
   border: 1px solid #333;
   border-radius: 12px;
@@ -469,21 +484,20 @@
 
 /* Responsive Design */
 @media (max-width: 768px) {
+  .app {
+    padding: 2.5vh 2.5vw;
+  }
+
   .app-main {
-    padding: 1rem;
+    padding: 0.5rem;
   }
 
   .app-header {
-    padding: 1rem;
+    padding: 1rem 1.5rem;
   }
 
   .app-header h1 {
     font-size: 1.25rem;
-  }
-
-  .chat-interface {
-    height: 50vh;
-    min-height: 300px;
   }
 
   .message-container {
@@ -508,10 +522,15 @@
 }
 
 @media (max-width: 480px) {
+  .app {
+    padding: 1vh 1vw;
+  }
+
   .app-header {
     flex-direction: column;
     gap: 0.5rem;
     align-items: flex-start;
+    padding: 0.75rem 1.5rem;
   }
 
   .message-container {
@@ -534,6 +553,14 @@
 
   .message-text {
     font-size: 0.875rem;
+  }
+
+  .chat-interface {
+    border-radius: 8px;
+  }
+
+  .message-input {
+    border-radius: 8px;
   }
 }
 

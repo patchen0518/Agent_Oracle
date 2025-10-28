@@ -22,7 +22,7 @@ class TestGeminiClient:
         """Test client initialization with explicit API key."""
         with patch('backend.services.gemini_client.genai.Client') as mock_client:
             client = GeminiClient(api_key="test-key")
-            assert client.model == "gemini-2.5-flash"
+            assert client.model == "gemini-2.5-flash-lite"
             mock_client.assert_called_once_with(api_key="test-key")
     
     def test_init_with_env_var(self):

@@ -22,7 +22,7 @@ class GeminiClient:
     google-genai Python SDK.
     """
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash-lite"):
         """
         Initialize the Gemini client.
         
