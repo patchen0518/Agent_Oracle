@@ -1,5 +1,17 @@
 /* Oracle Chat App Styles */
 
+/* Ensure proper viewport sizing and responsiveness */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
 .app {
   min-height: 100vh;
   height: 100vh;
@@ -7,8 +19,13 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 5vh 5vw;
+  margin: 0 auto;
+  max-width: 90vw;
+  width: 90vw;
+  padding: 2vh 0;
   box-sizing: border-box;
+  /* Ensure the app recalculates on resize */
+  position: relative;
 }
 
 .app>* {
@@ -63,7 +80,7 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  padding: 1rem;
+  padding: 0.5rem;
   min-height: 0;
 }
 
@@ -79,6 +96,8 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  /* Ensure it takes full available width */
 }
 
 .messages-container {
@@ -485,11 +504,13 @@
 /* Responsive Design */
 @media (max-width: 768px) {
   .app {
-    padding: 2.5vh 2.5vw;
+    max-width: 95vw;
+    width: 95vw;
+    padding: 1vh 0;
   }
 
   .app-main {
-    padding: 0.5rem;
+    padding: 0.25rem;
   }
 
   .app-header {
@@ -523,7 +544,13 @@
 
 @media (max-width: 480px) {
   .app {
-    padding: 1vh 1vw;
+    max-width: 98vw;
+    width: 98vw;
+    padding: 0.5vh 0;
+  }
+
+  .app-main {
+    padding: 0.25rem;
   }
 
   .app-header {
@@ -561,6 +588,22 @@
 
   .message-input {
     border-radius: 8px;
+  }
+}
+
+/* Large screen optimization */
+@media (min-width: 1200px) {
+  .app {
+    max-width: 1080px;
+    width: 90vw;
+  }
+}
+
+/* Ultra-wide screen optimization */
+@media (min-width: 1600px) {
+  .app {
+    max-width: 1440px;
+    width: 90vw;
   }
 }
 
