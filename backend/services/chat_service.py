@@ -11,6 +11,7 @@ from google.genai import errors
 from backend.models.chat_models import ChatMessage, ChatRequest, ChatResponse
 from backend.services.gemini_client import GeminiClient, ChatSession
 from backend.utils.logging_config import get_logger, log_error_context
+from backend.config.system_instructions import get_system_instruction
 
 
 class ChatService:
@@ -209,14 +210,13 @@ class ChatService:
         }
         
         try:
-            # Create a new chat session with system instruction
-            system_instruction = (
-                "You are Oracle, a helpful AI assistant. Provide clear, accurate, and "
-                "helpful responses to user questions. Maintain context from the "
-                "conversation history and engage in natural, contextual dialogue."
-            )
+            # Get system instruction from configuration
+            system_instruction = get_system_instruction()
             
-            self.logger.debug("Creating chat session", extra=session_context)
+            self.logger.debug("Creating chat session", extra={
+                **session_context, 
+                "instruction_length": len(system_instruction)
+            })
             
             # Create chat session with history using the latest SDK patterns
             chat_session = self.gemini_client.create_chat_session(
