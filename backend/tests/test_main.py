@@ -192,7 +192,7 @@ def test_chat_health_endpoint():
     """Test chat service health check endpoint."""
     with patch('backend.services.chat_service.ChatService.get_session_info') as mock_info:
         mock_info.return_value = {
-            "model": "gemini-2.5-flash-lite",
+            "model": "gemini-2.5-flash",
             "active_sessions": 0,
             "service_status": "active"
         }

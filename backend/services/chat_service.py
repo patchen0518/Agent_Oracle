@@ -7,7 +7,7 @@ formatting following current API standards and best practices.
 """
 
 from typing import List, Optional, Dict, Any
-from google.genai import errors
+from google.genai import errors, types
 from backend.models.chat_models import ChatMessage, ChatRequest, ChatResponse
 from backend.services.gemini_client import GeminiClient, ChatSession
 from backend.utils.logging_config import get_logger, log_error_context
@@ -23,7 +23,7 @@ class ChatService:
     from Gemini API conversation management.
     """
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash-lite"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash"):
         """
         Initialize the chat service.
         
@@ -50,7 +50,10 @@ class ChatService:
     
     async def process_chat_request(self, request: ChatRequest) -> ChatResponse:
         """
-        Process a chat request and return a response.
+        Process a chat request and return a response using stateless conversation approach.
+        
+        This method uses the generate_content API with full conversation history
+        to maintain context across requests without persistent chat sessions.
         
         Args:
             request: The chat request containing message and history
@@ -74,23 +77,33 @@ class ChatService:
             # Validate the request
             self._validate_request(request)
             
-            # For single-session chat, we create a new session for each request
-            # and rebuild the conversation context from the history using latest SDK patterns
-            chat_session = self._create_or_get_session(request.history)
+            # Get system instruction
+            system_instruction = get_system_instruction()
             
-            # Send the message and get response
-            # The chat session now automatically maintains context
-            response_text = chat_session.send_message(request.message)
+            # Build conversation contents including history + current message
+            contents = self._build_conversation_contents(request.history, request.message)
+            
+            # Generate response using stateless approach
+            response = self.gemini_client.client.models.generate_content(
+                model=self.model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    temperature=0.7,
+                    system_instruction=system_instruction
+                )
+            )
+            
+            response_text = response.text
             
             # Format and return the response
-            response = ChatResponse(response=response_text)
+            chat_response = ChatResponse(response=response_text)
             
             self.logger.info(
                 "Chat request processed successfully", 
                 extra={**request_context, "response_length": len(response_text)}
             )
             
-            return response
+            return chat_response
             
         except errors.APIError as e:
             # Log API errors with context
@@ -116,7 +129,7 @@ class ChatService:
     
     async def process_chat_request_stream(self, request: ChatRequest):
         """
-        Process a chat request with streaming response.
+        Process a chat request with streaming response using stateless approach.
         
         Args:
             request: The chat request containing message and history
@@ -132,12 +145,22 @@ class ChatService:
             # Validate the request
             self._validate_request(request)
             
-            # Create or get chat session with history using latest SDK patterns
-            chat_session = self._create_or_get_session(request.history)
+            # Get system instruction
+            system_instruction = get_system_instruction()
             
-            # Stream the response - the chat session maintains context automatically
-            for chunk in chat_session.send_message_stream(request.message):
-                yield chunk
+            # Build conversation contents including history + current message
+            contents = self._build_conversation_contents(request.history, request.message)
+            
+            # Stream response using stateless approach
+            for chunk in self.gemini_client.client.models.generate_content_stream(
+                model=self.model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    temperature=0.7,
+                    system_instruction=system_instruction
+                )
+            ):
+                yield chunk.text
                 
         except errors.APIError as e:
             new_error = errors.APIError(f"Streaming chat processing failed: {e}", {})
@@ -187,55 +210,39 @@ class ChatService:
         
         self.logger.debug(f"Request validation passed: {len(request.message)} chars, {len(request.history)} history messages")
     
-    def _create_or_get_session(self, history: List[ChatMessage]) -> ChatSession:
+    
+    def _build_conversation_contents(self, history: List[ChatMessage], current_message: str) -> List[types.Content]:
         """
-        Create a new chat session with conversation history using latest SDK patterns.
+        Build conversation contents for stateless Gemini API call.
         
-        For single-session chat, we create a fresh session and establish context
-        from the provided history. The new SDK automatically manages conversation
-        history within the session.
+        Converts conversation history and current message into the format expected
+        by the generate_content API, maintaining proper conversation flow.
         
         Args:
-            history: The conversation history to establish context
+            history: Previous conversation messages
+            current_message: The current user message
             
         Returns:
-            ChatSession: A chat session with the conversation context
-            
-        Raises:
-            ValueError: If session creation fails
+            List[types.Content]: Formatted conversation contents
         """
-        session_context = {
-            "history_length": len(history),
-            "model": self.model
-        }
+        contents = []
         
-        try:
-            # Get system instruction from configuration
-            system_instruction = get_system_instruction()
-            
-            self.logger.debug("Creating chat session", extra={
-                **session_context, 
-                "instruction_length": len(system_instruction)
-            })
-            
-            # Create chat session with history using the latest SDK patterns
-            chat_session = self.gemini_client.create_chat_session(
-                system_instruction=system_instruction,
-                history=history
+        # Add conversation history
+        for msg in history:
+            content = types.Content(
+                role=msg.role,  # 'user' or 'model'
+                parts=[types.Part.from_text(text=msg.parts)]
             )
-            
-            self.logger.debug("Chat session created successfully", extra=session_context)
-            return chat_session
-            
-        except errors.APIError as e:
-            log_error_context(self.logger, e, session_context)
-            raise e  # Re-raise API errors as-is
-            
-        except Exception as e:
-            log_error_context(self.logger, e, session_context)
-            raise ValueError(f"Failed to create chat session: {str(e)}")
-    
-
+            contents.append(content)
+        
+        # Add current user message
+        current_content = types.Content(
+            role='user',
+            parts=[types.Part.from_text(text=current_message)]
+        )
+        contents.append(current_content)
+        
+        return contents
     
     def _format_response(self, response_text: str) -> ChatResponse:
         """

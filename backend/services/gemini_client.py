@@ -22,7 +22,7 @@ class GeminiClient:
     google-genai Python SDK.
     """
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash-lite"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash"):
         """
         Initialize the Gemini client.
         
@@ -55,15 +55,25 @@ class GeminiClient:
         """
         Create a new chat session with optional conversation history.
         
+        The Gemini SDK automatically manages conversation history within chat sessions.
+        For single-session applications, we create a fresh session each time and rely
+        on the system instruction to maintain the AI's identity and behavior.
+        
         Args:
             system_instruction: Optional system instruction for the chat session
-            history: Optional conversation history to restore context
+            history: Optional conversation history (currently not used - see note below)
             
         Returns:
             ChatSession: A new chat session instance
             
         Raises:
             errors.APIError: If chat session creation fails
+            
+        Note:
+            The history parameter is accepted for API compatibility but not currently used.
+            The Gemini SDK manages conversation history automatically within sessions.
+            For stateless applications, each request creates a fresh session with the
+            system instruction, ensuring consistent AI behavior.
         """
         try:
             config = None
@@ -73,23 +83,21 @@ class GeminiClient:
                     system_instruction=system_instruction
                 )
             
+            # Create fresh chat session
+            # The SDK will automatically manage conversation history within this session
             chat = self.client.chats.create(
                 model=self.model,
                 config=config
             )
             
-            chat_session = ChatSession(chat)
-            
-            # If history is provided, replay it to establish context
-            if history:
-                chat_session._replay_history(history)
-            
-            return chat_session
+            return ChatSession(chat)
             
         except errors.APIError as e:
             raise self._handle_api_error(e)
         except Exception as e:
             raise errors.APIError(f"Failed to create chat session: {str(e)}")
+    
+
     
     def _handle_api_error(self, error: errors.APIError) -> errors.APIError:
         """
@@ -210,41 +218,7 @@ class ChatSession:
             # Return empty history if retrieval fails
             return []
     
-    def _replay_history(self, history: List[ChatMessage]) -> None:
-        """
-        Replay conversation history to establish context in the chat session.
-        
-        For single-session chat applications, we need to replay the conversation
-        history to maintain context across requests. This simulates a continuous
-        conversation by sending previous messages to establish context.
-        
-        Args:
-            history: The conversation history to replay
-        """
-        try:
-            # Replay conversation history in pairs (user message -> model response)
-            # This establishes the conversation context in the chat session
-            for i in range(0, len(history), 2):
-                if i + 1 < len(history):
-                    user_msg = history[i]
-                    model_msg = history[i + 1]
-                    
-                    # Only replay if we have a proper user/model pair
-                    if user_msg.role == "user" and model_msg.role == "model":
-                        # Send the user message and expect the model response
-                        # Note: This is a simplified approach for context establishment
-                        # In production, you might use a more sophisticated method
-                        try:
-                            self.chat.send_message(user_msg.parts)
-                        except Exception:
-                            # If replay fails, continue without this context
-                            # This ensures the service remains functional
-                            pass
-                            
-        except Exception as e:
-            # If history replay fails completely, continue without context
-            # This ensures the service remains functional even if context setup fails
-            pass
+
     
     def _handle_api_error(self, error: errors.APIError) -> errors.APIError:
         """
