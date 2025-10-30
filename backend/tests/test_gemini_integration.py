@@ -21,13 +21,14 @@ class TestGeminiClient:
     def test_init_with_api_key(self):
         """Test client initialization with explicit API key."""
         with patch('backend.services.gemini_client.genai.Client') as mock_client:
-            client = GeminiClient(api_key="test-key")
-            assert client.model == "gemini-2.5-flash"
-            mock_client.assert_called_once_with(api_key="test-key")
+            with patch.dict(os.environ, {'GEMINI_MODEL': 'gemini-2.5-flash'}):
+                client = GeminiClient(api_key="test-key")
+                assert client.model == "gemini-2.5-flash"
+                mock_client.assert_called_once_with(api_key="test-key")
     
     def test_init_with_env_var(self):
         """Test client initialization using environment variable."""
-        with patch.dict(os.environ, {'GEMINI_API_KEY': 'env-key'}):
+        with patch.dict(os.environ, {'GEMINI_API_KEY': 'env-key', 'GEMINI_MODEL': 'gemini-2.5-flash'}):
             with patch('backend.services.gemini_client.genai.Client') as mock_client:
                 client = GeminiClient()
                 mock_client.assert_called_once_with(api_key="env-key")
@@ -38,6 +39,30 @@ class TestGeminiClient:
             with pytest.raises(ValueError) as exc_info:
                 GeminiClient()
             assert "Gemini API key is required" in str(exc_info.value)
+    
+    def test_init_with_custom_model_from_env(self):
+        """Test client initialization with custom model from environment variable."""
+        with patch('backend.services.gemini_client.genai.Client') as mock_client:
+            with patch.dict(os.environ, {'GEMINI_API_KEY': 'test-key', 'GEMINI_MODEL': 'gemini-2.5-flash-lite'}):
+                client = GeminiClient()
+                assert client.model == "gemini-2.5-flash-lite"
+                mock_client.assert_called_once_with(api_key="test-key")
+    
+    def test_init_with_explicit_model_overrides_env(self):
+        """Test that explicit model parameter overrides environment variable."""
+        with patch('backend.services.gemini_client.genai.Client') as mock_client:
+            with patch.dict(os.environ, {'GEMINI_API_KEY': 'test-key', 'GEMINI_MODEL': 'gemini-2.5-flash-lite'}):
+                client = GeminiClient(model="gemini-1.5-pro")
+                assert client.model == "gemini-1.5-pro"
+                mock_client.assert_called_once_with(api_key="test-key")
+    
+    def test_init_defaults_to_gemini_flash_when_no_env(self):
+        """Test that client defaults to gemini-2.5-flash when no model env var is set."""
+        with patch('backend.services.gemini_client.genai.Client') as mock_client:
+            with patch.dict(os.environ, {'GEMINI_API_KEY': 'test-key'}, clear=True):
+                client = GeminiClient()
+                assert client.model == "gemini-2.5-flash"
+                mock_client.assert_called_once_with(api_key="test-key")
     
     def test_init_client_failure_raises_error(self):
         """Test that client initialization failure is handled."""
@@ -53,11 +78,12 @@ class TestGeminiClient:
         mock_client.chats.create.return_value = mock_chat
         
         with patch('backend.services.gemini_client.genai.Client', return_value=mock_client):
-            client = GeminiClient(api_key="test-key")
-            session = client.create_chat_session()
-            
-            assert isinstance(session, ChatSession)
-            mock_client.chats.create.assert_called_once()
+            with patch.dict(os.environ, {'GEMINI_MODEL': 'gemini-2.5-flash'}):
+                client = GeminiClient(api_key="test-key")
+                session = client.create_chat_session()
+                
+                assert isinstance(session, ChatSession)
+                mock_client.chats.create.assert_called_once()
     
     def test_create_chat_session_with_system_instruction(self):
         """Test chat session creation with system instruction."""
@@ -67,11 +93,12 @@ class TestGeminiClient:
         
         with patch('backend.services.gemini_client.genai.Client', return_value=mock_client):
             with patch('backend.services.gemini_client.types') as mock_types:
-                client = GeminiClient(api_key="test-key")
-                session = client.create_chat_session("You are a helpful assistant")
-                
-                mock_types.GenerateContentConfig.assert_called_once()
-                mock_client.chats.create.assert_called_once()
+                with patch.dict(os.environ, {'GEMINI_MODEL': 'gemini-2.5-flash'}):
+                    client = GeminiClient(api_key="test-key")
+                    session = client.create_chat_session("You are a helpful assistant")
+                    
+                    mock_types.GenerateContentConfig.assert_called_once()
+                    mock_client.chats.create.assert_called_once()
     
     def test_create_chat_session_api_error(self):
         """Test chat session creation with API error."""
@@ -81,14 +108,16 @@ class TestGeminiClient:
         mock_client.chats.create.side_effect = api_error
         
         with patch('backend.services.gemini_client.genai.Client', return_value=mock_client):
-            client = GeminiClient(api_key="test-key")
-            
-            with pytest.raises(errors.APIError):
-                client.create_chat_session()
+            with patch.dict(os.environ, {'GEMINI_MODEL': 'gemini-2.5-flash'}):
+                client = GeminiClient(api_key="test-key")
+                
+                with pytest.raises(errors.APIError):
+                    client.create_chat_session()
     
     def test_handle_api_error_with_known_codes(self):
         """Test API error handling with known error codes."""
-        client = GeminiClient(api_key="test-key")
+        with patch.dict(os.environ, {'GEMINI_MODEL': 'gemini-2.5-flash'}):
+            client = GeminiClient(api_key="test-key")
         
         # Test 404 error
         error_404 = errors.APIError("Not found", {})
@@ -191,7 +220,8 @@ class TestChatService:
     def setup_method(self):
         """Set up test fixtures."""
         with patch('backend.services.chat_service.GeminiClient'):
-            self.service = ChatService(api_key="test-key")
+            with patch.dict(os.environ, {'GEMINI_MODEL': 'gemini-2.5-flash'}):
+                self.service = ChatService(api_key="test-key")
     
     @pytest.mark.asyncio
     async def test_process_chat_request_success(self):
@@ -335,11 +365,28 @@ class TestChatService:
     
     def test_get_session_info(self):
         """Test session information retrieval."""
-        info = self.service.get_session_info()
-        
-        assert info["model"] == "gemini-2.5-flash"
-        assert info["active_sessions"] == 0
-        assert info["service_status"] == "active"
+        with patch.dict(os.environ, {'GEMINI_MODEL': 'gemini-2.5-flash'}):
+            info = self.service.get_session_info()
+            
+            assert info["model"] == "gemini-2.5-flash"
+            assert info["active_sessions"] == 0
+            assert info["service_status"] == "active"
+    
+    def test_chat_service_uses_env_model(self):
+        """Test that ChatService uses model from environment variable."""
+        with patch('backend.services.chat_service.GeminiClient') as mock_client:
+            with patch.dict(os.environ, {'GEMINI_MODEL': 'gemini-2.5-flash-lite'}):
+                service = ChatService(api_key="test-key")
+                assert service.model == "gemini-2.5-flash-lite"
+                mock_client.assert_called_once_with(api_key="test-key", model="gemini-2.5-flash-lite")
+    
+    def test_chat_service_explicit_model_overrides_env(self):
+        """Test that explicit model parameter overrides environment variable in ChatService."""
+        with patch('backend.services.chat_service.GeminiClient') as mock_client:
+            with patch.dict(os.environ, {'GEMINI_MODEL': 'gemini-2.5-flash-lite'}):
+                service = ChatService(api_key="test-key", model="gemini-1.5-pro")
+                assert service.model == "gemini-1.5-pro"
+                mock_client.assert_called_once_with(api_key="test-key", model="gemini-1.5-pro")
     
     def test_handle_conversation_context_empty_history(self):
         """Test context handling with empty history."""

@@ -22,17 +22,21 @@ class GeminiClient:
     google-genai Python SDK.
     """
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         """
         Initialize the Gemini client.
         
         Args:
             api_key: Gemini API key. If None, will use GEMINI_API_KEY or GOOGLE_API_KEY env var
-            model: Model name to use for chat sessions
+            model: Model name to use for chat sessions. If None, will use GEMINI_MODEL env var or default to "gemini-2.5-flash"
             
         Raises:
             ValueError: If no API key is provided or found in environment
         """
+        # Get model from parameter or environment, with fallback to default
+        if model is None:
+            model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        
         self.model = model
         
         # Get API key from parameter or environment

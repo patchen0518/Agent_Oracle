@@ -187,7 +187,7 @@ def test_chat_endpoint_missing_api_key():
         assert "API key not configured" in response.json()["detail"]
 
 
-@patch.dict('os.environ', {'GEMINI_API_KEY': 'test-api-key'})
+@patch.dict('os.environ', {'GEMINI_API_KEY': 'test-api-key', 'GEMINI_MODEL': 'gemini-2.5-flash'})
 def test_chat_health_endpoint():
     """Test chat service health check endpoint."""
     with patch('backend.services.chat_service.ChatService.get_session_info') as mock_info:

@@ -6,6 +6,7 @@ Implements conversation history processing, context management, and response
 formatting following current API standards and best practices.
 """
 
+import os
 from typing import List, Optional, Dict, Any
 from google.genai import errors, types
 from backend.models.chat_models import ChatMessage, ChatRequest, ChatResponse
@@ -23,18 +24,22 @@ class ChatService:
     from Gemini API conversation management.
     """
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         """
         Initialize the chat service.
         
         Args:
             api_key: Gemini API key. If None, will use environment variable
-            model: Model name to use for chat sessions
+            model: Model name to use for chat sessions. If None, will use GEMINI_MODEL env var or default to "gemini-2.5-flash"
             
         Raises:
             ValueError: If API key is not provided or invalid
         """
         self.logger = get_logger("chat_service")
+        
+        # Get model from parameter or environment, with fallback to default
+        if model is None:
+            model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         
         try:
             self.gemini_client = GeminiClient(api_key=api_key, model=model)
