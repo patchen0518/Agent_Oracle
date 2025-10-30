@@ -26,6 +26,7 @@ from backend.models.session_models import (
 )
 from backend.models.error_models import ErrorResponse, ServiceErrorResponse
 from backend.utils.logging_config import get_logger, log_error_context
+from backend.api.v1.monitoring_router import track_session_operation
 
 # Create the router
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
@@ -114,7 +115,14 @@ async def create_session(
     logger.info("Creating new session", extra=request_context)
     
     try:
+        from datetime import datetime
+        start_time = datetime.utcnow()
+        
         session = await session_service.create_session(session_data)
+        
+        # Track operation performance
+        duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        track_session_operation("create_session", duration_ms)
         
         logger.info(
             "Session created successfully",
@@ -174,7 +182,14 @@ async def list_sessions(
     logger.info("Listing sessions", extra=request_context)
     
     try:
+        from datetime import datetime
+        start_time = datetime.utcnow()
+        
         sessions = await session_service.list_sessions(limit=limit, offset=offset)
+        
+        # Track operation performance
+        duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        track_session_operation("list_sessions", duration_ms)
         
         logger.info(
             "Sessions listed successfully",
@@ -232,6 +247,9 @@ async def get_session(
     logger.info("Retrieving session", extra=request_context)
     
     try:
+        from datetime import datetime
+        start_time = datetime.utcnow()
+        
         session = await session_service.get_session(session_id)
         
         if not session:
@@ -240,6 +258,10 @@ async def get_session(
                 status_code=404,
                 detail=f"Session {session_id} not found"
             )
+        
+        # Track operation performance
+        duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        track_session_operation("get_session", duration_ms)
         
         logger.info("Session retrieved successfully", extra=request_context)
         return session
@@ -431,7 +453,14 @@ async def send_message(
     logger.info("Processing session chat message", extra=request_context)
     
     try:
+        from datetime import datetime
+        start_time = datetime.utcnow()
+        
         response = await session_chat_service.send_message(session_id, chat_request.message)
+        
+        # Track operation performance
+        duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        track_session_operation("send_message", duration_ms)
         
         logger.info(
             "Session chat message processed successfully",
@@ -547,11 +576,18 @@ async def get_session_messages(
     logger.info("Retrieving session messages", extra=request_context)
     
     try:
+        from datetime import datetime
+        start_time = datetime.utcnow()
+        
         messages = await session_service.get_session_messages(
             session_id=session_id,
             limit=limit,
             offset=offset
         )
+        
+        # Track operation performance
+        duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        track_session_operation("get_messages", duration_ms)
         
         logger.info(
             "Session messages retrieved successfully",
