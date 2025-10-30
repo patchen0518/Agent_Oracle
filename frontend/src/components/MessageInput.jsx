@@ -3,7 +3,7 @@
 
 import React, { useState, useCallback, memo, useRef, useEffect } from 'react'
 
-const MessageInput = memo(({ onSendMessage, isLoading, disabled }) => {
+const MessageInput = memo(({ onSendMessage, isLoading, disabled, placeholder }) => {
   const [message, setMessage] = useState('')
   const [validationError, setValidationError] = useState('')
   const [isFocused, setIsFocused] = useState(false)
@@ -92,7 +92,7 @@ const MessageInput = memo(({ onSendMessage, isLoading, disabled }) => {
             onKeyPress={handleKeyPress}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            placeholder={disabled ? "Backend not connected..." : "Type your message... (Press Enter to send, Shift+Enter for new line)"}
+            placeholder={disabled ? (placeholder || "Backend not connected...") : (placeholder || "Type your message... (Press Enter to send, Shift+Enter for new line)")}
             disabled={disabled}
             className={`message-textarea ${validationError ? 'error' : ''} ${isWarning ? 'warning' : ''}`}
             rows={3}

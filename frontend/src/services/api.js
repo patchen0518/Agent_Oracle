@@ -153,4 +153,222 @@ export const checkHealth = async () => {
   }
 }
 
+// Session management API functions
+export const createSession = async (sessionData = {}) => {
+  try {
+    const response = await apiClient.post('/api/v1/sessions/', sessionData)
+    return response.data
+  } catch (error) {
+    const enhancedError = new Error()
+    
+    if (error.response) {
+      const status = error.response.status
+      const data = error.response.data
+      
+      enhancedError.response = error.response
+      
+      if (status === 400) {
+        enhancedError.message = data?.detail || 'Invalid session data'
+      } else if (status >= 500) {
+        enhancedError.message = 'Server error - failed to create session'
+      } else {
+        enhancedError.message = data?.detail || `Failed to create session: ${status}`
+      }
+    } else if (error.request) {
+      enhancedError.request = error.request
+      enhancedError.message = 'Unable to connect to server - check your internet connection'
+    } else {
+      enhancedError.message = error.message || 'Failed to create session'
+    }
+    
+    throw enhancedError
+  }
+}
+
+export const getSessions = async () => {
+  try {
+    const response = await apiClient.get('/api/v1/sessions/')
+    return response.data
+  } catch (error) {
+    const enhancedError = new Error()
+    
+    if (error.response) {
+      enhancedError.response = error.response
+      enhancedError.message = error.response.data?.detail || 'Failed to load sessions'
+    } else if (error.request) {
+      enhancedError.request = error.request
+      enhancedError.message = 'Unable to connect to server'
+    } else {
+      enhancedError.message = error.message || 'Failed to load sessions'
+    }
+    
+    throw enhancedError
+  }
+}
+
+export const getSession = async (sessionId) => {
+  try {
+    const response = await apiClient.get(`/api/v1/sessions/${sessionId}`)
+    return response.data
+  } catch (error) {
+    const enhancedError = new Error()
+    
+    if (error.response) {
+      const status = error.response.status
+      const data = error.response.data
+      
+      enhancedError.response = error.response
+      
+      if (status === 404) {
+        enhancedError.message = 'Session not found'
+      } else {
+        enhancedError.message = data?.detail || 'Failed to load session'
+      }
+    } else if (error.request) {
+      enhancedError.request = error.request
+      enhancedError.message = 'Unable to connect to server'
+    } else {
+      enhancedError.message = error.message || 'Failed to load session'
+    }
+    
+    throw enhancedError
+  }
+}
+
+export const updateSession = async (sessionId, updates) => {
+  try {
+    const response = await apiClient.put(`/api/v1/sessions/${sessionId}`, updates)
+    return response.data
+  } catch (error) {
+    const enhancedError = new Error()
+    
+    if (error.response) {
+      const status = error.response.status
+      const data = error.response.data
+      
+      enhancedError.response = error.response
+      
+      if (status === 404) {
+        enhancedError.message = 'Session not found'
+      } else if (status === 400) {
+        enhancedError.message = data?.detail || 'Invalid session data'
+      } else {
+        enhancedError.message = data?.detail || 'Failed to update session'
+      }
+    } else if (error.request) {
+      enhancedError.request = error.request
+      enhancedError.message = 'Unable to connect to server'
+    } else {
+      enhancedError.message = error.message || 'Failed to update session'
+    }
+    
+    throw enhancedError
+  }
+}
+
+export const deleteSession = async (sessionId) => {
+  try {
+    const response = await apiClient.delete(`/api/v1/sessions/${sessionId}`)
+    return response.data
+  } catch (error) {
+    const enhancedError = new Error()
+    
+    if (error.response) {
+      const status = error.response.status
+      const data = error.response.data
+      
+      enhancedError.response = error.response
+      
+      if (status === 404) {
+        enhancedError.message = 'Session not found'
+      } else {
+        enhancedError.message = data?.detail || 'Failed to delete session'
+      }
+    } else if (error.request) {
+      enhancedError.request = error.request
+      enhancedError.message = 'Unable to connect to server'
+    } else {
+      enhancedError.message = error.message || 'Failed to delete session'
+    }
+    
+    throw enhancedError
+  }
+}
+
+export const sendSessionMessage = async (sessionId, message) => {
+  try {
+    const response = await apiClient.post(`/api/v1/sessions/${sessionId}/chat`, {
+      role: 'user',
+      content: message
+    })
+    return response.data
+  } catch (error) {
+    const enhancedError = new Error()
+    
+    if (error.response) {
+      const status = error.response.status
+      const data = error.response.data
+      
+      enhancedError.response = error.response
+      
+      if (status === 400) {
+        enhancedError.message = data?.detail || 'Invalid message format'
+      } else if (status === 404) {
+        enhancedError.message = 'Session not found'
+      } else if (status === 401) {
+        enhancedError.message = 'Authentication failed - API key invalid'
+      } else if (status === 429) {
+        enhancedError.message = 'Rate limit exceeded - please wait before sending another message'
+      } else if (status === 502) {
+        enhancedError.message = 'AI service temporarily unavailable'
+      } else if (status === 503) {
+        enhancedError.message = 'Service temporarily unavailable'
+      } else if (status >= 500) {
+        enhancedError.message = 'Server error - please try again later'
+      } else {
+        enhancedError.message = data?.detail || `Server error: ${status}`
+      }
+    } else if (error.request) {
+      enhancedError.request = error.request
+      enhancedError.message = 'Unable to connect to server - check your internet connection'
+    } else if (error.code === 'ECONNABORTED') {
+      enhancedError.code = 'ECONNABORTED'
+      enhancedError.message = 'Request timed out - the server is taking too long to respond'
+    } else {
+      enhancedError.message = error.message || 'Failed to send message'
+    }
+    
+    throw enhancedError
+  }
+}
+
+export const getSessionMessages = async (sessionId) => {
+  try {
+    const response = await apiClient.get(`/api/v1/sessions/${sessionId}/messages`)
+    return response.data
+  } catch (error) {
+    const enhancedError = new Error()
+    
+    if (error.response) {
+      const status = error.response.status
+      const data = error.response.data
+      
+      enhancedError.response = error.response
+      
+      if (status === 404) {
+        enhancedError.message = 'Session not found'
+      } else {
+        enhancedError.message = data?.detail || 'Failed to load messages'
+      }
+    } else if (error.request) {
+      enhancedError.request = error.request
+      enhancedError.message = 'Unable to connect to server'
+    } else {
+      enhancedError.message = error.message || 'Failed to load messages'
+    }
+    
+    throw enhancedError
+  }
+}
+
 export default apiClient

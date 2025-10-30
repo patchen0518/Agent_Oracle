@@ -4,16 +4,36 @@
 import { useEffect, useRef, useState, useCallback, memo } from 'react'
 import Message from './Message'
 
-const ChatInterface = memo(({ messages, isLoading }) => {
+const ChatInterface = memo(({ sessionId, messages, isLoading, onLoadMessages }) => {
   const messagesEndRef = useRef(null)
   const chatContainerRef = useRef(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [isUserScrolling, setIsUserScrolling] = useState(false)
+  const [loadingMessages, setLoadingMessages] = useState(false)
+
+  // Load messages when session changes
+  useEffect(() => {
+    if (sessionId && onLoadMessages) {
+      setLoadingMessages(true)
+      const result = onLoadMessages(sessionId)
+      if (result && typeof result.finally === 'function') {
+        result
+          .catch(() => {
+            // Silently handle errors - parent component should handle error display
+          })
+          .finally(() => {
+            setLoadingMessages(false)
+          })
+      } else {
+        setLoadingMessages(false)
+      }
+    }
+  }, [sessionId, onLoadMessages])
 
   // Auto-scroll to latest message when new messages are added (only if user is at bottom)
   useEffect(() => {
     // Only auto-scroll if user is at the bottom (not scrolled up)
-    if (!isUserScrolling && messagesEndRef.current) {
+    if (!isUserScrolling && messagesEndRef.current && messagesEndRef.current.scrollIntoView) {
       messagesEndRef.current.scrollIntoView({
         behavior: 'smooth',
         block: 'end'
@@ -65,7 +85,7 @@ const ChatInterface = memo(({ messages, isLoading }) => {
 
   // Handle scroll to bottom manually
   const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current) {
+    if (messagesEndRef.current && messagesEndRef.current.scrollIntoView) {
       messagesEndRef.current.scrollIntoView({
         behavior: 'smooth',
         block: 'end'
@@ -82,11 +102,18 @@ const ChatInterface = memo(({ messages, isLoading }) => {
         ref={chatContainerRef}
         className="messages-container"
       >
-        {messages.length === 0 && !isLoading ? (
+        {loadingMessages ? (
+          <div className="loading-messages">
+            <div className="loading-content">
+              <div className="loading-spinner"></div>
+              <p>Loading conversation history...</p>
+            </div>
+          </div>
+        ) : messages.length === 0 && !isLoading ? (
           <div className="empty-state">
             <div className="empty-content">
               <h3>This is Oracle</h3>
-              <p>Start a conversation by typing a message below.</p>
+              <p>{sessionId ? 'Start a conversation in this session by typing a message below.' : 'Create or select a session to start chatting.'}</p>
             </div>
           </div>
         ) : (
