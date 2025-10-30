@@ -1,0 +1,532 @@
+/* Session Header Styles */
+
+.session-header {
+  background-color: #1a1a1a;
+  border-bottom: 1px solid #333;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 80px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.session-header.no-session {
+  background-color: #1a1a1a;
+}
+
+/* Header Layout */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+/* Sidebar Toggle */
+.sidebar-toggle {
+  background: none;
+  border: 1px solid #444;
+  color: #888;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.sidebar-toggle:hover {
+  background-color: #2a2a2a;
+  border-color: #555;
+  color: #fff;
+}
+
+/* Session Info */
+.session-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* Title Display */
+.title-display-container {
+  display: flex;
+  align-items: center;
+}
+
+.session-title {
+  margin: 0;
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.session-title.clickable {
+  cursor: pointer;
+  transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.session-title.clickable:hover {
+  color: #3b82f6;
+}
+
+.edit-icon {
+  font-size: 1rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.session-title.clickable:hover .edit-icon {
+  opacity: 1;
+}
+
+.session-subtitle {
+  margin: 0;
+  color: #888;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+/* Title Editing */
+.title-edit-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 500px;
+}
+
+.title-edit-input {
+  flex: 1;
+  background-color: #2a2a2a;
+  border: 2px solid #3b82f6;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-family: inherit;
+  min-width: 0;
+}
+
+.title-edit-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.title-edit-input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.save-btn,
+.cancel-btn {
+  background: none;
+  border: 1px solid #444;
+  color: #888;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.save-btn:hover:not(:disabled) {
+  background-color: #10b981;
+  border-color: #10b981;
+  color: #fff;
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cancel-btn:hover:not(:disabled) {
+  background-color: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
+}
+
+.cancel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Session Metadata */
+.session-metadata {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.separator {
+  color: #555;
+}
+
+.message-count,
+.created-date,
+.last-activity {
+  white-space: nowrap;
+}
+
+/* Session Controls */
+.session-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.control-btn {
+  background: none;
+  border: 1px solid #444;
+  color: #888;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  transition: all 0.2s ease;
+}
+
+.control-btn:hover:not(:disabled) {
+  background-color: #2a2a2a;
+  border-color: #555;
+  color: #fff;
+}
+
+.control-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.delete-btn:hover:not(:disabled) {
+  background-color: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
+}
+
+/* Status Indicator */
+.status {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.status.checking {
+  background-color: #fbbf24;
+  color: #92400e;
+}
+
+.status.connected {
+  background-color: #10b981;
+  color: #065f46;
+}
+
+.status.disconnected {
+  background-color: #ef4444;
+  color: #991b1b;
+}
+
+/* Delete Confirmation Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.delete-modal {
+  background-color: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  padding: 1.5rem 1.5rem 0 1.5rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 1rem 1.5rem;
+}
+
+.modal-body p {
+  margin: 0 0 1rem 0;
+  color: #ccc;
+  line-height: 1.5;
+}
+
+.modal-body p:last-child {
+  margin-bottom: 0;
+}
+
+.warning-text {
+  color: #fbbf24 !important;
+  font-size: 0.875rem;
+  background-color: #1f1f1f;
+  padding: 0.75rem;
+  border-radius: 6px;
+  border-left: 3px solid #f59e0b;
+}
+
+.modal-actions {
+  padding: 0 1.5rem 1.5rem 1.5rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.cancel-modal-btn,
+.delete-modal-btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.cancel-modal-btn {
+  background-color: transparent;
+  color: #888;
+  border: 1px solid #444;
+}
+
+.cancel-modal-btn:hover:not(:disabled) {
+  background-color: #2a2a2a;
+  border-color: #555;
+  color: #fff;
+}
+
+.delete-modal-btn {
+  background-color: #ef4444;
+  color: #fff;
+}
+
+.delete-modal-btn:hover:not(:disabled) {
+  background-color: #dc2626;
+}
+
+.cancel-modal-btn:disabled,
+.delete-modal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mobile Responsive Design */
+@media (max-width: 768px) {
+  .session-header {
+    padding: 1rem 1.5rem;
+    min-height: 70px;
+  }
+
+  .header-left {
+    gap: 0.75rem;
+  }
+
+  .header-right {
+    gap: 0.75rem;
+  }
+
+  .session-title {
+    font-size: 1.25rem;
+  }
+
+  .session-metadata {
+    font-size: 0.8rem;
+    flex-wrap: wrap;
+  }
+
+  .sidebar-toggle,
+  .control-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
+  }
+
+  .title-edit-input {
+    font-size: 1.1rem;
+  }
+
+  .status {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.8rem;
+  }
+
+  /* Hide some metadata on small screens */
+  .created-date,
+  .last-activity {
+    display: none;
+  }
+
+  .session-metadata .separator:nth-of-type(2),
+  .session-metadata .separator:nth-of-type(3) {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .session-header {
+    padding: 0.75rem 1rem;
+    min-height: 60px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .header-left,
+  .header-right {
+    width: 100%;
+  }
+
+  .header-right {
+    justify-content: space-between;
+  }
+
+  .session-title {
+    font-size: 1.1rem;
+  }
+
+  .session-metadata {
+    font-size: 0.75rem;
+  }
+
+  .title-edit-container {
+    max-width: none;
+  }
+
+  .title-edit-input {
+    font-size: 1rem;
+  }
+
+  .delete-modal {
+    margin: 1rem;
+    max-width: none;
+  }
+
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .cancel-modal-btn,
+  .delete-modal-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Touch-friendly interactions */
+@media (hover: none) and (pointer: coarse) {
+  .sidebar-toggle,
+  .control-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .save-btn,
+  .cancel-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .session-title.clickable .edit-icon {
+    opacity: 1;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .session-header {
+    border-bottom-width: 2px;
+  }
+
+  .sidebar-toggle,
+  .control-btn,
+  .save-btn,
+  .cancel-btn {
+    border-width: 2px;
+  }
+
+  .title-edit-input {
+    border-width: 3px;
+  }
+
+  .delete-modal {
+    border-width: 2px;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .session-title.clickable,
+  .sidebar-toggle,
+  .control-btn,
+  .save-btn,
+  .cancel-btn,
+  .cancel-modal-btn,
+  .delete-modal-btn,
+  .edit-icon {
+    transition: none;
+  }
+}

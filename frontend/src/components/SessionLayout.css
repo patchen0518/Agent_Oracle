@@ -1,0 +1,287 @@
+/* Session Layout Styles */
+
+.session-layout {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.session-layout.mobile {
+  flex-direction: column;
+}
+
+.session-layout.desktop {
+  flex-direction: row;
+}
+
+/* Sidebar Container */
+.sidebar-container {
+  position: relative;
+  z-index: 100;
+  transition: all 0.3s ease;
+}
+
+/* Desktop sidebar states */
+.session-layout.desktop .sidebar-container.expanded {
+  width: 300px;
+  flex-shrink: 0;
+}
+
+.session-layout.desktop .sidebar-container.collapsed {
+  width: 60px;
+  flex-shrink: 0;
+}
+
+/* Mobile sidebar states */
+.session-layout.mobile .sidebar-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: 300px;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  z-index: 1000;
+}
+
+.session-layout.mobile .sidebar-container.open {
+  transform: translateX(0);
+}
+
+.session-layout.mobile .sidebar-container.closed {
+  transform: translateX(-100%);
+}
+
+/* Mobile overlay */
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  backdrop-filter: blur(2px);
+}
+
+/* Main content area */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+}
+
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Mobile sidebar indicator */
+.mobile-sidebar-indicator {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 50px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+  z-index: 100;
+  min-width: 80px;
+}
+
+.mobile-sidebar-indicator:hover {
+  background-color: #2563eb;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.mobile-sidebar-indicator:active {
+  transform: translateY(0);
+}
+
+.session-count {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.indicator-text {
+  white-space: nowrap;
+}
+
+/* Hide indicator on desktop */
+.session-layout.desktop .mobile-sidebar-indicator {
+  display: none;
+}
+
+/* Responsive breakpoints */
+@media (max-width: 768px) {
+  .session-layout {
+    flex-direction: column;
+  }
+
+  .sidebar-container {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 300px;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    z-index: 1000;
+  }
+
+  .sidebar-container.open {
+    transform: translateX(0);
+  }
+
+  .main-content {
+    width: 100%;
+    height: 100vh;
+  }
+
+  /* Ensure content doesn't get pushed by sidebar */
+  .content-area {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar-container {
+    width: 100vw !important;
+  }
+
+  .mobile-sidebar-indicator {
+    bottom: 16px;
+    left: 16px;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.8rem;
+  }
+
+  .session-count {
+    width: 20px;
+    height: 20px;
+    font-size: 0.7rem;
+  }
+}
+
+/* Landscape mobile adjustments */
+@media (max-width: 768px) and (orientation: landscape) {
+  .sidebar-container {
+    width: 280px;
+  }
+
+  .mobile-sidebar-indicator {
+    bottom: 12px;
+    left: 12px;
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .session-layout.desktop .sidebar-container.expanded {
+    width: 280px;
+  }
+
+  .session-layout.desktop .sidebar-container.collapsed {
+    width: 56px;
+  }
+}
+
+/* Large screen optimizations */
+@media (min-width: 1200px) {
+  .session-layout.desktop .sidebar-container.expanded {
+    width: 320px;
+  }
+}
+
+/* Ultra-wide screen optimizations */
+@media (min-width: 1600px) {
+  .session-layout.desktop .sidebar-container.expanded {
+    width: 350px;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .sidebar-overlay {
+    background-color: rgba(0, 0, 0, 0.8);
+  }
+
+  .mobile-sidebar-indicator {
+    border: 2px solid currentColor;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-container,
+  .mobile-sidebar-indicator {
+    transition: none;
+  }
+
+  .mobile-sidebar-indicator:hover {
+    transform: none;
+  }
+
+  .mobile-sidebar-indicator:active {
+    transform: none;
+  }
+}
+
+/* Focus management for accessibility */
+.sidebar-container:focus-within {
+  z-index: 1001;
+}
+
+/* Ensure proper stacking context */
+.session-layout.mobile .main-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* Safe area adjustments for mobile devices with notches */
+@supports (padding: max(0px)) {
+  .session-layout.mobile .sidebar-container {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
+
+  .mobile-sidebar-indicator {
+    bottom: max(20px, env(safe-area-inset-bottom) + 20px);
+    left: max(20px, env(safe-area-inset-left) + 20px);
+  }
+}
+
+/* Print styles */
+@media print {
+  .sidebar-container,
+  .mobile-sidebar-indicator {
+    display: none;
+  }
+
+  .main-content {
+    width: 100% !important;
+  }
+}
