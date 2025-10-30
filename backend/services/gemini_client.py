@@ -10,7 +10,6 @@ import os
 from typing import List, Optional
 from google import genai
 from google.genai import errors, types
-from backend.models.chat_models import ChatMessage
 
 
 class GeminiClient:
@@ -55,7 +54,7 @@ class GeminiClient:
         except Exception as e:
             raise ValueError(f"Failed to initialize Gemini client: {str(e)}")
     
-    def create_chat_session(self, system_instruction: Optional[str] = None, history: Optional[List[ChatMessage]] = None) -> "ChatSession":
+    def create_chat_session(self, system_instruction: Optional[str] = None) -> "ChatSession":
         """
         Create a new chat session with optional conversation history.
         
@@ -196,12 +195,12 @@ class ChatSession:
         except Exception as e:
             raise ValueError(f"Failed to send streaming message: {str(e)}")
     
-    def get_history(self) -> List[ChatMessage]:
+    def get_history(self) -> List[dict]:
         """
         Get the conversation history from the chat session.
         
         Returns:
-            List[ChatMessage]: List of messages in the conversation
+            List[dict]: List of messages in the conversation as dictionaries
         """
         try:
             # Use the SDK's built-in history management
@@ -209,11 +208,11 @@ class ChatSession:
             chat_messages = []
             
             for message in history:
-                # Convert Gemini message format to our ChatMessage model
-                chat_message = ChatMessage(
-                    role=message.role,
-                    parts=message.parts[0].text if message.parts and len(message.parts) > 0 else ""
-                )
+                # Convert Gemini message format to dictionary
+                chat_message = {
+                    "role": message.role,
+                    "content": message.parts[0].text if message.parts and len(message.parts) > 0 else ""
+                }
                 chat_messages.append(chat_message)
             
             return chat_messages

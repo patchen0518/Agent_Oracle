@@ -11,8 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
-from backend.api.v1.chat_router import router as chat_router
+from backend.api.v1.session_router import router as session_router
 from backend.api.v1.monitoring_router import router as monitoring_router
+from backend.config.database import init_database
 from backend.utils.logging_config import setup_logging, get_logger, log_error_context
 
 # Setup logging
@@ -27,6 +28,14 @@ async def lifespan(app: FastAPI):
     logger.info(f"Log level: {log_level}")
     logger.info(f"Log file: {log_file}")
     
+    # Initialize database and create tables
+    try:
+        init_database()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        raise
+    
     # Check required environment variables
     if not os.getenv("GEMINI_API_KEY"):
         logger.warning("GEMINI_API_KEY not set - chat functionality will be unavailable")
@@ -38,8 +47,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Oracle Chat API",
-    description="Single-session chat application with Gemini AI",
-    version="1.0.0",
+    description="Session-based chat application with Gemini AI",
+    version="1.1.0",
     lifespan=lifespan
 )
 
@@ -53,7 +62,7 @@ app.add_middleware(
 )
 
 # Include API routers
-app.include_router(chat_router)
+app.include_router(session_router)
 app.include_router(monitoring_router)
 
 @app.get("/")
@@ -124,7 +133,7 @@ async def health_check():
                 "gemini_api": gemini_status,
                 "logging": "active"
             },
-            "version": "1.0.0"
+            "version": "1.1.0"
         }
         
         logger.debug("Health check requested", extra=health_info)

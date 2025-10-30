@@ -1,6 +1,5 @@
 # Pydantic models package
 
-from .chat_models import ChatMessage, ChatRequest, ChatResponse
 from .error_models import (
     ErrorResponse,
     ServiceErrorResponse,
@@ -16,15 +15,11 @@ from .session_models import (
     SessionWithMessages,
     MessageCreate,
     MessagePublic,
-    ChatRequest as SessionChatRequest,
-    ChatResponse as SessionChatResponse,
+    ChatRequest,
+    ChatResponse,
 )
 
 __all__ = [
-    # Chat models
-    "ChatMessage",
-    "ChatRequest", 
-    "ChatResponse",
     # Session models
     "Session",
     "Message",
@@ -34,8 +29,8 @@ __all__ = [
     "SessionWithMessages",
     "MessageCreate",
     "MessagePublic",
-    "SessionChatRequest",
-    "SessionChatResponse",
+    "ChatRequest",
+    "ChatResponse",
     # Error models
     "ErrorResponse",
     "ServiceErrorResponse",
