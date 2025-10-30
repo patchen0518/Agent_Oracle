@@ -83,54 +83,6 @@ apiClient.interceptors.response.use(
   }
 )
 
-// Chat API functions using latest axios methods
-export const postChatMessage = async (requestData) => {
-  try {
-    const response = await apiClient.post('/api/v1/chat', requestData)
-    return response.data
-  } catch (error) {
-    // Enhanced error handling with specific error types
-    const enhancedError = new Error()
-    
-    if (error.response) {
-      // Server responded with error status
-      const status = error.response.status
-      const data = error.response.data
-      
-      enhancedError.response = error.response
-      
-      if (status === 400) {
-        enhancedError.message = data?.detail || 'Invalid message format'
-      } else if (status === 401) {
-        enhancedError.message = 'Authentication failed - API key invalid'
-      } else if (status === 429) {
-        enhancedError.message = 'Rate limit exceeded - please wait before sending another message'
-      } else if (status === 502) {
-        enhancedError.message = 'AI service temporarily unavailable'
-      } else if (status === 503) {
-        enhancedError.message = 'Service temporarily unavailable'
-      } else if (status >= 500) {
-        enhancedError.message = 'Server error - please try again later'
-      } else {
-        enhancedError.message = data?.detail || `Server error: ${status}`
-      }
-    } else if (error.request) {
-      // Network error
-      enhancedError.request = error.request
-      enhancedError.message = 'Unable to connect to server - check your internet connection'
-    } else if (error.code === 'ECONNABORTED') {
-      // Timeout error
-      enhancedError.code = 'ECONNABORTED'
-      enhancedError.message = 'Request timed out - the server is taking too long to respond'
-    } else {
-      // Request setup error
-      enhancedError.message = error.message || 'Failed to send message'
-    }
-    
-    throw enhancedError
-  }
-}
-
 // Health check function
 export const checkHealth = async () => {
   try {
