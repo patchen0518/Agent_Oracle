@@ -126,6 +126,12 @@ fi
 print_success "Pre-flight checks completed!"
 echo
 
+# Create logs directory if it doesn't exist
+if [ ! -d "logs" ]; then
+    print_status "Creating logs directory..."
+    mkdir -p logs
+fi
+
 # Start backend
 print_status "Starting backend server..."
 cd backend
