@@ -7,12 +7,35 @@ from .error_models import (
     ValidationErrorDetail,
     ValidationErrorResponse,
 )
+from .session_models import (
+    Session,
+    Message,
+    SessionCreate,
+    SessionUpdate,
+    SessionPublic,
+    SessionWithMessages,
+    MessageCreate,
+    MessagePublic,
+    ChatRequest as SessionChatRequest,
+    ChatResponse as SessionChatResponse,
+)
 
 __all__ = [
     # Chat models
     "ChatMessage",
     "ChatRequest", 
     "ChatResponse",
+    # Session models
+    "Session",
+    "Message",
+    "SessionCreate",
+    "SessionUpdate",
+    "SessionPublic",
+    "SessionWithMessages",
+    "MessageCreate",
+    "MessagePublic",
+    "SessionChatRequest",
+    "SessionChatResponse",
     # Error models
     "ErrorResponse",
     "ServiceErrorResponse",

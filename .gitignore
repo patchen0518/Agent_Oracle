@@ -66,6 +66,12 @@ Thumbs.db
 logs/
 !logs/.gitkeep
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+oracle_sessions.db
+
 # Testing
 .coverage
 htmlcov/
