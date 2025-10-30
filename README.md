@@ -33,7 +33,7 @@ The primary goal is to build a robust, well-designed, and maintainable software 
 * **Database:** SQLite integration with SQLModel for type-safe database operations
 * **Session Storage:** Persistent chat sessions with message history stored server-side
 * **Performance:** Significant reduction in API token usage and improved response times
-* **API Enhancement:** New session-based endpoints for chat management
+* **API Migration:** Complete replacement of stateless endpoints with session-based architecture
 * **Frontend Migration:** Complete UI overhaul to support session management
 * **Features:**
   - Create, manage, and switch between multiple chat sessions
@@ -153,18 +153,15 @@ The project implements a production-ready, decoupled frontend/backend architectu
 oracle/
 ├── backend/                    # FastAPI backend application
 │   ├── api/v1/                # API routes and endpoints
-│   │   ├── chat_router.py     # Legacy stateless chat endpoints
 │   │   ├── session_router.py  # Session-based chat endpoints (MVP 1.1)
 │   │   └── monitoring_router.py # Health checks and diagnostics
 │   ├── config/                # Configuration management
 │   │   ├── database.py        # Database configuration (MVP 1.1)
 │   │   └── system_instructions.py # AI personality configurations
 │   ├── models/                # Pydantic data models
-│   │   ├── chat_models.py     # Legacy chat request/response models
 │   │   ├── session_models.py  # Session and message models (MVP 1.1)
 │   │   └── error_models.py    # Error response models
 │   ├── services/              # Business logic and external integrations
-│   │   ├── chat_service.py    # Legacy stateless chat service
 │   │   ├── session_service.py # Session management service (MVP 1.1)
 │   │   ├── session_chat_service.py # Session-based chat service (MVP 1.1)
 │   │   └── gemini_client.py   # Gemini API client wrapper
@@ -239,6 +236,9 @@ This ensures all implementations follow current standards and avoid issues with 
 #### Backend
 - **FastAPI**: Routing, middleware, validation patterns
 - **Gemini API**: Authentication, chat sessions, message formatting, error handling
+- **SQLModel**: Database model definitions, relationships, and query patterns
+- **SQLAlchemy**: Database operations, migrations, and connection management
+- **SQLite**: Database configuration, optimization, and best practices
 - **Pydantic**: Model validation and serialization
 - **pytest**: Testing patterns and fixtures
 
@@ -526,12 +526,12 @@ GEMINI_MODEL=gemini-2.5-flash-lite
 
 **Key Changes:**
 - **Database Integration:** SQLite + SQLModel for session and message storage
-- **API Evolution:** New session-based endpoints (`/api/v1/sessions/`)
+- **API Migration:** Complete replacement with session-based endpoints (`/api/v1/sessions/`)
 - **Performance Improvement:** Reduce API token usage by 70-80%
 - **Frontend UI Overhaul:** Complete redesign to support multi-session management
 - **Session Interface:** New sidebar, session controls, and context-aware chat interface
 - **State Management:** Migration from client-side to server-side conversation storage
-- **Backward Compatibility:** Maintain existing endpoints during transition
+- **Architecture Simplification:** Unified session-based approach replacing stateless design
 
 **Benefits:**
 - Dramatically reduced API costs through server-side history management
@@ -540,12 +540,12 @@ GEMINI_MODEL=gemini-2.5-flash-lite
 - Improved scalability and performance
 
 **Development Approach:**
-- **Phase 1:** Implement backend session management alongside existing stateless system
+- **Phase 1:** Implement backend session management with complete replacement of stateless system
 - **Phase 2:** Design and implement new frontend UI for session management
-- **Phase 3:** Update frontend to use session-based endpoints and new UI
-- **Phase 4:** Deprecate and eventually remove stateless endpoints
-- **Testing:** Comprehensive test coverage for both backend session functionality and frontend UI
-- **Migration:** Smooth transition without breaking existing functionality
+- **Phase 3:** Update frontend to use session-based endpoints and new UI exclusively
+- **Phase 4:** Remove all stateless endpoints and migrate to session-based architecture
+- **Testing:** Comprehensive test coverage for session-based functionality and UI components
+- **Migration:** Complete transition to session-based conversation management
 
 ---
 
