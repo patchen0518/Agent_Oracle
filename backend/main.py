@@ -15,6 +15,8 @@ from backend.api.v1.session_router import router as session_router
 from backend.api.v1.monitoring_router import router as monitoring_router
 from backend.config.database import init_database
 from backend.utils.logging_config import setup_logging, get_logger, log_error_context
+# Import models to ensure they are registered with SQLModel
+from backend.models.session_models import Session, Message
 
 # Setup logging
 log_level = os.getenv("LOG_LEVEL", "INFO")
