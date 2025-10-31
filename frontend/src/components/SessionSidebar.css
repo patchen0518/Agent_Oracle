@@ -491,3 +491,139 @@
     transform: none;
   }
 }
+/* Delet
+e Confirmation Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.delete-modal {
+  background-color: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  padding: 1.5rem 1.5rem 0 1.5rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 1rem 1.5rem;
+}
+
+.modal-body p {
+  margin: 0 0 1rem 0;
+  color: #ccc;
+  line-height: 1.5;
+}
+
+.modal-body p:last-child {
+  margin-bottom: 0;
+}
+
+.warning-text {
+  color: #fbbf24 !important;
+  font-size: 0.875rem;
+  background-color: #1f1f1f;
+  padding: 0.75rem;
+  border-radius: 6px;
+  border-left: 3px solid #f59e0b;
+}
+
+.modal-actions {
+  padding: 0 1.5rem 1.5rem 1.5rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.cancel-modal-btn,
+.delete-modal-btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.cancel-modal-btn {
+  background-color: transparent;
+  color: #888;
+  border: 1px solid #444;
+}
+
+.cancel-modal-btn:hover:not(:disabled) {
+  background-color: #2a2a2a;
+  border-color: #555;
+  color: #fff;
+}
+
+.delete-modal-btn {
+  background-color: #ef4444;
+  color: #fff;
+}
+
+.delete-modal-btn:hover:not(:disabled) {
+  background-color: #dc2626;
+}
+
+.cancel-modal-btn:disabled,
+.delete-modal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Modal responsive design for mobile */
+@media (max-width: 480px) {
+  .delete-modal {
+    margin: 1rem;
+    max-width: none;
+  }
+
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .cancel-modal-btn,
+  .delete-modal-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* High contrast mode support for modal */
+@media (prefers-contrast: high) {
+  .delete-modal {
+    border-width: 2px;
+  }
+}
+
+/* Reduced motion support for modal */
+@media (prefers-reduced-motion: reduce) {
+  .cancel-modal-btn,
+  .delete-modal-btn {
+    transition: none;
+  }
+}

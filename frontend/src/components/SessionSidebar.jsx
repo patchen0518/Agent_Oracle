@@ -1,7 +1,7 @@
 // Session sidebar component for managing chat sessions
 // Based on React v19+ documentation
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import './SessionSidebar.css'
 
 const SessionSidebar = ({ 
@@ -17,6 +17,9 @@ const SessionSidebar = ({
   const [newSessionTitle, setNewSessionTitle] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [sessionToDelete, setSessionToDelete] = useState(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Handle creating a new session
   const handleCreateSession = async (e) => {
@@ -36,18 +39,29 @@ const SessionSidebar = ({
   }
 
   // Handle session deletion with confirmation
-  const handleDeleteSession = async (sessionId, sessionTitle) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${sessionTitle}"? This action cannot be undone.`
-    )
-    
-    if (confirmed) {
-      try {
-        await onSessionDelete(sessionId)
-      } catch (error) {
-        console.error('Failed to delete session:', error)
-      }
+  const handleDeleteClick = (session) => {
+    setSessionToDelete(session)
+    setShowDeleteConfirm(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!sessionToDelete || isDeleting) return
+
+    setIsDeleting(true)
+    try {
+      await onSessionDelete(sessionToDelete.id)
+      setShowDeleteConfirm(false)
+      setSessionToDelete(null)
+    } catch (error) {
+      console.error('Failed to delete session:', error)
+    } finally {
+      setIsDeleting(false)
     }
+  }
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirm(false)
+    setSessionToDelete(null)
   }
 
   // Format timestamp for display
@@ -171,10 +185,11 @@ const SessionSidebar = ({
                     className="delete-session-btn"
                     onClick={(e) => {
                       e.stopPropagation()
-                      handleDeleteSession(session.id, session.title)
+                      handleDeleteClick(session)
                     }}
                     aria-label={`Delete session "${session.title}"`}
                     title="Delete session"
+                    disabled={isDeleting}
                   >
                     ×
                   </button>
@@ -183,6 +198,42 @@ const SessionSidebar = ({
             )}
           </div>
         </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && sessionToDelete && (
+        <div className="modal-overlay" onClick={handleCancelDelete}>
+          <div className="delete-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Delete Session</h3>
+            </div>
+            <div className="modal-body">
+              <p>
+                Are you sure you want to delete <strong>"{sessionToDelete.title}"</strong>?
+              </p>
+              <p className="warning-text">
+                This will permanently delete all {sessionToDelete.message_count || 0} messages 
+                in this session. This action cannot be undone.
+              </p>
+            </div>
+            <div className="modal-actions">
+              <button
+                onClick={handleCancelDelete}
+                disabled={isDeleting}
+                className="cancel-modal-btn"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="delete-modal-btn"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Session'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
