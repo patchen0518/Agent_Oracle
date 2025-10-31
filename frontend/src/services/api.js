@@ -250,8 +250,7 @@ export const deleteSession = async (sessionId) => {
 export const sendSessionMessage = async (sessionId, message) => {
   try {
     const response = await apiClient.post(`/api/v1/sessions/${sessionId}/chat`, {
-      role: 'user',
-      content: message
+      message: message
     })
     return response.data
   } catch (error) {

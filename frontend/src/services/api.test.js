@@ -297,8 +297,7 @@ describe('API Service', () => {
         const result = await sendSessionMessage(sessionId, message)
         
         expect(mockAxiosInstance.post).toHaveBeenCalledWith('/api/v1/sessions/1/chat', {
-          role: 'user',
-          content: message
+          message: message
         })
         expect(result).toEqual(expectedResponse)
       })

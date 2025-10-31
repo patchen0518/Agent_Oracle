@@ -1,7 +1,7 @@
 // Main App component for Oracle Chat
 // Based on React v19+ documentation (Context 7 lookup: 2025-01-27)
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import SessionLayout from './components/SessionLayout'
 import ChatInterface from './components/ChatInterface'
 import MessageInput from './components/MessageInput'
@@ -127,7 +127,7 @@ function App() {
   }
 
   // Load messages for a specific session
-  const loadSessionMessages = async (sessionId) => {
+  const loadSessionMessages = useCallback(async (sessionId) => {
     try {
       // Find the session to check message count first
       const session = sessions.find(s => s.id === sessionId)
@@ -135,17 +135,30 @@ function App() {
       // If session has no messages, skip API call and set empty array immediately
       if (session && session.message_count === 0) {
         setMessages([])
-        return
+        return Promise.resolve()
       }
       
+      // If session not found in state yet (race condition), try API call
+      // This handles the case where session creation hasn't updated state yet
       const messagesData = await getSessionMessages(sessionId)
       setMessages(messagesData)
+      return Promise.resolve()
     } catch (error) {
       console.error('Failed to load session messages:', error)
+      
+      // If it's a 404 error (session not found), it might be a new session
+      // Set empty messages and don't show error
+      if (error.response && error.response.status === 404) {
+        console.log('Session not found, assuming new session with no messages')
+        setMessages([])
+        return Promise.resolve()
+      }
+      
       handleError(error)
       setMessages([]) // Clear messages on error
+      return Promise.reject(error)
     }
-  }
+  }, [sessions, handleError]) // Dependencies: sessions array and handleError function
 
   // Handle session selection
   const handleSessionSelect = async (sessionId) => {
@@ -160,9 +173,15 @@ function App() {
   const handleSessionCreate = async (sessionData = {}) => {
     try {
       const newSession = await createSession(sessionData)
+      
+      // Update sessions state and set active session together
       setSessions(prev => [newSession, ...prev])
       setActiveSession(newSession)
-      setMessages([]) // New session starts with empty messages
+      
+      // For new sessions, we know they have no messages, so set empty array directly
+      // This prevents the race condition where loadSessionMessages is called before sessions state updates
+      setMessages([])
+      
       return newSession
     } catch (error) {
       console.error('Failed to create session:', error)
