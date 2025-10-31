@@ -33,11 +33,7 @@ def test_engine():
     return engine
 
 
-@pytest.fixture
-def test_db_session(test_engine):
-    """Create a test database session."""
-    with Session(test_engine) as session:
-        yield session
+# Using test_session fixture from conftest.py
 
 
 @pytest.fixture
@@ -56,9 +52,9 @@ def mock_chat_session():
 
 
 @pytest.fixture
-def session_chat_service(test_db_session, mock_gemini_client):
+def session_chat_service(test_session, mock_gemini_client):
     """Create a SessionChatService instance for testing."""
-    return SessionChatService(test_db_session, mock_gemini_client)
+    return SessionChatService(test_session, mock_gemini_client)
 
 
 @pytest.fixture

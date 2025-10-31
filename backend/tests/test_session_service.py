@@ -30,16 +30,9 @@ def test_engine():
 
 
 @pytest.fixture
-def test_db_session(test_engine):
-    """Create a test database session."""
-    with Session(test_engine) as session:
-        yield session
-
-
-@pytest.fixture
-def session_service(test_db_session):
+def session_service(test_session):
     """Create a SessionService instance for testing."""
-    return SessionService(test_db_session)
+    return SessionService(test_session)
 
 
 class TestSessionServiceCRUD:

@@ -13,7 +13,14 @@ from sqlmodel import SQLModel, create_engine, Session
 
 
 # Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./oracle_sessions.db")
+def get_database_url() -> str:
+    """Get database URL based on environment."""
+    # Use test database for testing
+    if os.getenv("TESTING") == "true":
+        return "sqlite:///./test_oracle_sessions.db"
+    return os.getenv("DATABASE_URL", "sqlite:///./oracle_sessions.db")
+
+DATABASE_URL = get_database_url()
 
 # Create SQLite engine with proper configuration
 engine = create_engine(
@@ -70,6 +77,18 @@ def init_database() -> None:
     startup to ensure the database is properly initialized.
     """
     create_db_and_tables()
+
+
+def cleanup_test_database() -> None:
+    """
+    Clean up test database by removing the file.
+    
+    This should only be used in testing environments.
+    """
+    if os.getenv("TESTING") == "true":
+        test_db_path = "./test_oracle_sessions.db"
+        if os.path.exists(test_db_path):
+            os.remove(test_db_path)
 
 
 # Database health check function

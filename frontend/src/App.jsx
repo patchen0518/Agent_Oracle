@@ -129,6 +129,15 @@ function App() {
   // Load messages for a specific session
   const loadSessionMessages = async (sessionId) => {
     try {
+      // Find the session to check message count first
+      const session = sessions.find(s => s.id === sessionId)
+      
+      // If session has no messages, skip API call and set empty array immediately
+      if (session && session.message_count === 0) {
+        setMessages([])
+        return
+      }
+      
       const messagesData = await getSessionMessages(sessionId)
       setMessages(messagesData)
     } catch (error) {

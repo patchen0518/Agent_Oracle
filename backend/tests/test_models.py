@@ -142,11 +142,7 @@ def test_engine():
     return engine
 
 
-@pytest.fixture
-def test_session(test_engine):
-    """Create a test database session."""
-    with Session(test_engine) as session:
-        yield session
+# Using test_session fixture from conftest.py
 
 
 class TestSessionModel:

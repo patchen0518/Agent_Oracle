@@ -27,6 +27,9 @@ const ChatInterface = memo(({ sessionId, messages, isLoading, onLoadMessages }) 
       } else {
         setLoadingMessages(false)
       }
+    } else {
+      // No session selected or no load function - clear loading state
+      setLoadingMessages(false)
     }
   }, [sessionId, onLoadMessages])
 

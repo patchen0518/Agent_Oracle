@@ -25,25 +25,7 @@ def test_engine():
     return engine
 
 
-@pytest.fixture
-def test_db_session(test_engine):
-    """Create a test database session."""
-    with Session(test_engine) as session:
-        yield session
-
-
-@pytest.fixture
-def client(test_db_session):
-    """Create a test client with database override."""
-    def get_test_session():
-        yield test_db_session
-    
-    app.dependency_overrides[get_session] = get_test_session
-    
-    with TestClient(app) as test_client:
-        yield test_client
-    
-    app.dependency_overrides.clear()
+# Using fixtures from conftest.py
 
 
 @pytest.fixture

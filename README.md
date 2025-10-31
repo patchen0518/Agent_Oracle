@@ -314,6 +314,26 @@ LOG_LEVEL=info
 # GEMINI_API_KEY=your_api_key_here
 ```
 
+### Database Management
+
+Oracle includes a database management script for development:
+
+```bash
+# View database statistics
+uv run python backend/scripts/manage_db.py stats
+
+# Clean all sessions and messages (with confirmation)
+uv run python backend/scripts/manage_db.py clean
+
+# Reset database completely (with confirmation)
+uv run python backend/scripts/manage_db.py reset
+
+# Initialize database tables
+uv run python backend/scripts/manage_db.py init
+```
+
+**Note:** Tests use separate in-memory databases and won't affect your main database.
+
 ### Manual Setup
 
 ```bash
