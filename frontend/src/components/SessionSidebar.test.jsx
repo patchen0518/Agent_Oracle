@@ -140,7 +140,7 @@ describe('SessionSidebar', () => {
     await user.type(titleInput, 'New Test Session')
     await user.click(screen.getByRole('button', { name: /create/i }))
     
-    expect(defaultProps.onSessionCreate).toHaveBeenCalledWith('New Test Session')
+    expect(defaultProps.onSessionCreate).toHaveBeenCalledWith({ title: 'New Test Session' })
   })
 
   it('cancels session creation when cancel button is clicked', async () => {

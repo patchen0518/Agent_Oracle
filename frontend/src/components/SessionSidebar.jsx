@@ -25,7 +25,7 @@ const SessionSidebar = ({
 
     setIsCreating(true)
     try {
-      await onSessionCreate(newSessionTitle.trim())
+      await onSessionCreate({ title: newSessionTitle.trim() })
       setNewSessionTitle('')
       setShowCreateForm(false)
     } catch (error) {

@@ -115,11 +115,26 @@ const SessionHeader = ({
 
   // Format session metadata
   const formatTimestamp = (timestamp) => {
-    const date = new Date(timestamp)
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    })
+    if (!timestamp) return 'Unknown'
+    
+    try {
+      // Handle both ISO string and Date object
+      const date = new Date(timestamp)
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid timestamp received:', timestamp)
+        return 'Invalid Date'
+      }
+      
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      })
+    } catch (error) {
+      console.error('Error formatting timestamp:', error, timestamp)
+      return 'Invalid Date'
+    }
   }
 
   if (!session) {
