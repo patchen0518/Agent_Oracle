@@ -52,15 +52,15 @@ def mock_chat_session():
 
 
 @pytest.fixture
-def session_chat_service(test_session, mock_gemini_client):
+def session_chat_service(db_session, mock_gemini_client):
     """Create a SessionChatService instance for testing."""
-    return SessionChatService(test_session, mock_gemini_client)
+    return SessionChatService(db_session, mock_gemini_client)
 
 
 @pytest.fixture
-async def test_session(test_db_session):
+async def test_session_model(db_session):
     """Create a test session in the database."""
-    session_service = SessionService(test_db_session)
+    session_service = SessionService(db_session)
     session_data = SessionCreate(title="Test Chat Session")
     return await session_service.create_session(session_data)
 
@@ -69,28 +69,31 @@ class TestSessionChatServiceSendMessage:
     """Test message sending and response handling within session context."""
     
     @pytest.mark.asyncio
-    async def test_send_message_success(self, session_chat_service, test_session, mock_gemini_client, mock_chat_session):
-        """Test successful message sending and AI response."""
-        # Setup mock
-        mock_gemini_client.create_chat_session.return_value = mock_chat_session
+    async def test_send_message_success(self, session_chat_service, test_session_model, mock_gemini_client, mock_chat_session):
+        """Test successful message sending and AI response with persistent sessions."""
+        # Setup mock for persistent sessions
+        mock_gemini_client.get_or_create_session.return_value = mock_chat_session
         mock_chat_session.send_message.return_value = "Hello! How can I help you today?"
         
         # Send message
-        result = await session_chat_service.send_message(test_session.id, "Hello, AI!")
+        result = await session_chat_service.send_message(test_session_model.id, "Hello, AI!")
         
         # Verify result structure
         assert isinstance(result, ChatResponse)
         assert result.user_message.content == "Hello, AI!"
         assert result.user_message.role == "user"
-        assert result.user_message.session_id == test_session.id
+        assert result.user_message.session_id == test_session_model.id
         assert result.assistant_message.content == "Hello! How can I help you today?"
         assert result.assistant_message.role == "assistant"
-        assert result.assistant_message.session_id == test_session.id
-        assert result.session.id == test_session.id
+        assert result.assistant_message.session_id == test_session_model.id
+        assert result.session.id == test_session_model.id
         
-        # Verify Gemini client was called
-        mock_gemini_client.create_chat_session.assert_called_once()
-        mock_chat_session.send_message.assert_called_once()
+        # Verify persistent session was used
+        mock_gemini_client.get_or_create_session.assert_called_once()
+        mock_chat_session.send_message.assert_called_once_with("Hello, AI!")
+        
+        # Verify persistent session flag is set
+        assert result.assistant_message.message_metadata["persistent_session"] == True
     
     @pytest.mark.asyncio
     async def test_send_message_nonexistent_session(self, session_chat_service):
@@ -99,22 +102,22 @@ class TestSessionChatServiceSendMessage:
             await session_chat_service.send_message(999, "Hello")
     
     @pytest.mark.asyncio
-    async def test_send_message_empty_content(self, session_chat_service, test_session):
+    async def test_send_message_empty_content(self, session_chat_service, test_session_model):
         """Test sending empty message raises ValueError."""
         with pytest.raises(ValueError, match="Message content cannot be empty"):
-            await session_chat_service.send_message(test_session.id, "")
+            await session_chat_service.send_message(test_session_model.id, "")
         
         with pytest.raises(ValueError, match="Message content cannot be empty"):
-            await session_chat_service.send_message(test_session.id, "   ")
+            await session_chat_service.send_message(test_session_model.id, "   ")
     
     @pytest.mark.asyncio
-    async def test_send_message_with_context(self, session_chat_service, test_session, mock_gemini_client, mock_chat_session):
-        """Test sending message with existing conversation context."""
-        # Setup mock
-        mock_gemini_client.create_chat_session.return_value = mock_chat_session
+    async def test_send_message_with_persistent_context(self, session_chat_service, test_session, mock_gemini_client, mock_chat_session):
+        """Test sending message with persistent session context (no manual context building)."""
+        # Setup mock for persistent sessions
+        mock_gemini_client.get_or_create_session.return_value = mock_chat_session
         mock_chat_session.send_message.return_value = "I understand your follow-up question."
         
-        # Add some existing messages to the session
+        # Add some existing messages to the session (for database persistence)
         session_service = SessionService(session_chat_service.db)
         await session_service.add_message(MessageCreate(
             session_id=test_session.id,
@@ -130,13 +133,12 @@ class TestSessionChatServiceSendMessage:
         # Send follow-up message
         result = await session_chat_service.send_message(test_session.id, "Can you tell me more?")
         
-        # Verify context was included in the API call
-        mock_chat_session.send_message.assert_called_once()
-        call_args = mock_chat_session.send_message.call_args[0][0]
-        assert "Previous conversation:" in call_args
-        assert "What is Python?" in call_args
-        assert "Python is a programming language." in call_args
-        assert "Can you tell me more?" in call_args
+        # Verify message was sent directly to persistent session (no manual context)
+        mock_chat_session.send_message.assert_called_once_with("Can you tell me more?")
+        
+        # Verify persistent session was used
+        mock_gemini_client.get_or_create_session.assert_called_once()
+        assert result.assistant_message.message_metadata["persistent_session"] == True
     
     @pytest.mark.asyncio
     async def test_send_message_updates_session_metadata(self, session_chat_service, test_session, mock_gemini_client, mock_chat_session):
@@ -358,8 +360,8 @@ class TestSessionChatServiceIntegration:
     @pytest.mark.asyncio
     async def test_integration_with_session_service(self, session_chat_service, test_session, mock_gemini_client, mock_chat_session):
         """Test integration between SessionChatService and SessionService."""
-        # Setup mock
-        mock_gemini_client.create_chat_session.return_value = mock_chat_session
+        # Setup mock for persistent sessions
+        mock_gemini_client.get_or_create_session.return_value = mock_chat_session
         mock_chat_session.send_message.return_value = "Integration test response"
         
         # Send message
@@ -378,6 +380,10 @@ class TestSessionChatServiceIntegration:
         # Verify session was updated
         updated_session = await session_service.get_session(test_session.id)
         assert updated_session.message_count == 2
+        
+        # Verify persistent session was used
+        mock_gemini_client.get_or_create_session.assert_called_once()
+        assert result.assistant_message.message_metadata["persistent_session"] == True
     
     @pytest.mark.asyncio
     async def test_database_transaction_rollback_on_error(self, session_chat_service, test_session, mock_gemini_client):
@@ -501,3 +507,301 @@ class TestSessionChatServiceErrorHandling:
         
         # Should complete without raising an exception
         asyncio.run(test_metadata_update())
+
+
+class TestPersistentSessionIntegration:
+    """Test full conversation flow with persistent sessions."""
+    
+    @pytest.mark.asyncio
+    async def test_persistent_session_conversation_flow(self, session_chat_service, test_session_model, mock_gemini_client, mock_chat_session):
+        """Test full conversation flow using persistent Gemini sessions."""
+        # Setup mock for persistent sessions
+        mock_gemini_client.get_or_create_session.return_value = mock_chat_session
+        mock_chat_session.send_message.side_effect = [
+            "Hello! How can I help you?",
+            "Python is a programming language.",
+            "Sure! Python is great for beginners."
+        ]
+        
+        # Send multiple messages to test conversation flow
+        result1 = await session_chat_service.send_message(test_session_model.id, "Hello")
+        result2 = await session_chat_service.send_message(test_session_model.id, "What is Python?")
+        result3 = await session_chat_service.send_message(test_session_model.id, "Tell me more")
+        
+        # Verify all messages were processed
+        assert result1.assistant_message.content == "Hello! How can I help you?"
+        assert result2.assistant_message.content == "Python is a programming language."
+        assert result3.assistant_message.content == "Sure! Python is great for beginners."
+        
+        # Verify persistent session was reused (called once, then reused)
+        assert mock_gemini_client.get_or_create_session.call_count == 3
+        
+        # Verify all messages have persistent_session flag
+        assert result1.assistant_message.message_metadata["persistent_session"] == True
+        assert result2.assistant_message.message_metadata["persistent_session"] == True
+        assert result3.assistant_message.message_metadata["persistent_session"] == True
+        
+        # Verify messages were stored in database
+        session_service = SessionService(session_chat_service.db)
+        messages = await session_service.get_session_messages(test_session_model.id)
+        assert len(messages) == 6  # 3 user + 3 assistant messages
+    
+    @pytest.mark.asyncio
+    async def test_session_recovery_after_cache_miss(self, session_chat_service, test_session, mock_gemini_client, mock_chat_session):
+        """Test session recovery when cache misses occur."""
+        # Setup: Add some existing messages to database
+        session_service = SessionService(session_chat_service.db)
+        await session_service.add_message(MessageCreate(
+            session_id=test_session.id,
+            role="user",
+            content="Previous question"
+        ))
+        await session_service.add_message(MessageCreate(
+            session_id=test_session.id,
+            role="assistant",
+            content="Previous answer"
+        ))
+        
+        # Setup mock to simulate cache miss and recovery
+        mock_gemini_client.get_or_create_session.side_effect = Exception("Cache miss")
+        mock_gemini_client._create_fresh_session.return_value = mock_chat_session
+        mock_chat_session.send_message.side_effect = [
+            "Previous answer",  # Recovery replay
+            "New response"      # Actual new message
+        ]
+        mock_gemini_client.sessions_recovered = 0
+        mock_gemini_client.active_sessions = {}
+        
+        # Send message (should trigger recovery)
+        result = await session_chat_service.send_message(test_session.id, "New question")
+        
+        # Verify recovery was attempted
+        mock_gemini_client._create_fresh_session.assert_called()
+        
+        # Verify message was processed successfully
+        assert result.assistant_message.content == "New response"
+        assert result.assistant_message.message_metadata["persistent_session"] == True
+    
+    @pytest.mark.asyncio
+    async def test_error_handling_with_fallback_to_stateless(self, session_chat_service, test_session, mock_gemini_client, mock_chat_session):
+        """Test error handling and fallback to stateless implementation."""
+        # Setup: Add some existing messages for context
+        session_service = SessionService(session_chat_service.db)
+        await session_service.add_message(MessageCreate(
+            session_id=test_session.id,
+            role="user",
+            content="Context message"
+        ))
+        await session_service.add_message(MessageCreate(
+            session_id=test_session.id,
+            role="assistant",
+            content="Context response"
+        ))
+        
+        # Setup mock to fail persistent session and recovery, but succeed with fallback
+        mock_gemini_client.get_or_create_session.side_effect = Exception("Persistent session failed")
+        mock_gemini_client._create_fresh_session.side_effect = Exception("Recovery failed")
+        mock_gemini_client.create_chat_session.return_value = mock_chat_session
+        mock_chat_session.send_message.return_value = "Fallback response"
+        
+        # Send message (should use fallback)
+        result = await session_chat_service.send_message(test_session.id, "Test fallback")
+        
+        # Verify fallback was used
+        mock_gemini_client.create_chat_session.assert_called_once()
+        assert result.assistant_message.content == "Fallback response"
+        assert result.assistant_message.message_metadata["persistent_session"] == False
+        
+        # Verify message was still stored in database
+        messages = await session_service.get_session_messages(test_session.id)
+        assert len(messages) == 4  # 2 existing + 2 new messages
+    
+    @pytest.mark.asyncio
+    async def test_database_persistence_during_session_failures(self, session_chat_service, test_session, mock_gemini_client, mock_chat_session):
+        """Test that database persistence continues even during session management failures."""
+        # Setup mock to succeed with AI response but fail some database operations
+        mock_gemini_client.get_or_create_session.return_value = mock_chat_session
+        mock_chat_session.send_message.return_value = "AI response despite DB issues"
+        
+        # Mock one database operation to fail
+        original_add_message = session_chat_service.session_service.add_message
+        call_count = 0
+        
+        async def mock_add_message(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:  # Fail first call (user message)
+                raise Exception("Database error")
+            return await original_add_message(*args, **kwargs)
+        
+        with patch.object(session_chat_service.session_service, 'add_message', side_effect=mock_add_message):
+            # Send message (should handle database error gracefully)
+            result = await session_chat_service.send_message(test_session.id, "Test DB resilience")
+            
+            # Verify response was still returned
+            assert result.assistant_message.content == "AI response despite DB issues"
+            
+            # Verify placeholder message was created for failed user message
+            assert result.user_message.content == "Test DB resilience"
+            assert result.user_message.id == 0  # Placeholder ID
+    
+    @pytest.mark.asyncio
+    async def test_automatic_recovery_when_errors_resolved(self, session_chat_service, test_session, mock_gemini_client, mock_chat_session):
+        """Test automatic recovery when errors are resolved."""
+        # Setup mock to fail first time, succeed second time
+        call_count = 0
+        
+        def mock_get_or_create_session(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("Temporary failure")
+            return mock_chat_session
+        
+        mock_gemini_client.get_or_create_session.side_effect = mock_get_or_create_session
+        mock_gemini_client._create_fresh_session.return_value = mock_chat_session
+        mock_chat_session.send_message.side_effect = ["Recovery response", "Normal response"]
+        mock_gemini_client.sessions_recovered = 0
+        mock_gemini_client.active_sessions = {}
+        
+        # First message should trigger recovery
+        result1 = await session_chat_service.send_message(test_session.id, "First message")
+        assert result1.assistant_message.content == "Recovery response"
+        
+        # Second message should work normally (error resolved)
+        result2 = await session_chat_service.send_message(test_session.id, "Second message")
+        assert result2.assistant_message.content == "Normal response"
+        
+        # Verify both used persistent sessions
+        assert result1.assistant_message.message_metadata["persistent_session"] == True
+        assert result2.assistant_message.message_metadata["persistent_session"] == True
+
+
+class TestSessionRecoveryMechanism:
+    """Test session recovery from database when cache misses occur."""
+    
+    @pytest.mark.asyncio
+    async def test_recover_session_from_database_success(self, session_chat_service, test_session, mock_gemini_client, mock_chat_session):
+        """Test successful session recovery from database history."""
+        # Setup: Add conversation history to database
+        session_service = SessionService(session_chat_service.db)
+        await session_service.add_message(MessageCreate(
+            session_id=test_session.id,
+            role="user",
+            content="What is AI?"
+        ))
+        await session_service.add_message(MessageCreate(
+            session_id=test_session.id,
+            role="assistant",
+            content="AI is artificial intelligence."
+        ))
+        await session_service.add_message(MessageCreate(
+            session_id=test_session.id,
+            role="user",
+            content="How does it work?"
+        ))
+        await session_service.add_message(MessageCreate(
+            session_id=test_session.id,
+            role="assistant",
+            content="AI works through algorithms."
+        ))
+        
+        # Setup mock for recovery
+        mock_gemini_client._create_fresh_session.return_value = mock_chat_session
+        mock_chat_session.send_message.side_effect = [
+            "AI is artificial intelligence.",  # Recovery replay 1
+            "AI works through algorithms."     # Recovery replay 2
+        ]
+        mock_gemini_client.sessions_recovered = 0
+        
+        # Recover session
+        recovered_session = await session_chat_service.recover_session_from_database(
+            test_session.id, "Test system instruction"
+        )
+        
+        # Verify recovery was successful
+        assert recovered_session == mock_chat_session
+        assert mock_gemini_client.sessions_recovered == 1
+        
+        # Verify conversation history was replayed
+        assert mock_chat_session.send_message.call_count == 2
+        mock_chat_session.send_message.assert_any_call("What is AI?")
+        mock_chat_session.send_message.assert_any_call("How does it work?")
+    
+    @pytest.mark.asyncio
+    async def test_recover_session_empty_history(self, session_chat_service, test_session, mock_gemini_client, mock_chat_session):
+        """Test session recovery with no message history."""
+        # Setup mock
+        mock_gemini_client._create_fresh_session.return_value = mock_chat_session
+        mock_gemini_client.sessions_recovered = 0
+        
+        # Recover session with no history
+        recovered_session = await session_chat_service.recover_session_from_database(
+            test_session.id, "Test system instruction"
+        )
+        
+        # Verify fresh session was created
+        assert recovered_session == mock_chat_session
+        assert mock_gemini_client.sessions_recovered == 1
+        
+        # Verify no messages were replayed
+        mock_chat_session.send_message.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_recover_session_nonexistent_session(self, session_chat_service):
+        """Test recovery failure for non-existent session."""
+        with pytest.raises(ValueError, match="Session 999 not found in database"):
+            await session_chat_service.recover_session_from_database(999, "Test instruction")
+    
+    @pytest.mark.asyncio
+    async def test_recover_session_partial_failure(self, session_chat_service, test_session, mock_gemini_client, mock_chat_session):
+        """Test session recovery with partial message replay failures."""
+        # Setup: Add conversation history
+        session_service = SessionService(session_chat_service.db)
+        await session_service.add_message(MessageCreate(
+            session_id=test_session.id,
+            role="user",
+            content="First question"
+        ))
+        await session_service.add_message(MessageCreate(
+            session_id=test_session.id,
+            role="assistant",
+            content="First answer"
+        ))
+        await session_service.add_message(MessageCreate(
+            session_id=test_session.id,
+            role="user",
+            content="Second question"
+        ))
+        
+        # Setup mock to fail on second message replay
+        mock_gemini_client._create_fresh_session.return_value = mock_chat_session
+        mock_chat_session.send_message.side_effect = [
+            "First answer",  # Success
+            Exception("Replay failed")  # Failure
+        ]
+        mock_gemini_client.sessions_recovered = 0
+        
+        # Recovery should still succeed despite partial failure
+        recovered_session = await session_chat_service.recover_session_from_database(
+            test_session.id, "Test system instruction"
+        )
+        
+        # Verify recovery completed
+        assert recovered_session == mock_chat_session
+        assert mock_gemini_client.sessions_recovered == 1
+        
+        # Verify both messages were attempted
+        assert mock_chat_session.send_message.call_count == 2
+    
+    @pytest.mark.asyncio
+    async def test_recover_session_complete_failure(self, session_chat_service, test_session, mock_gemini_client):
+        """Test session recovery complete failure."""
+        # Setup mock to fail session creation
+        mock_gemini_client._create_fresh_session.side_effect = Exception("Session creation failed")
+        
+        # Recovery should fail
+        with pytest.raises(RuntimeError, match="Failed to recover session"):
+            await session_chat_service.recover_session_from_database(
+                test_session.id, "Test system instruction"
+            )

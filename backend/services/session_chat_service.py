@@ -42,24 +42,18 @@ class SessionChatService:
         self.db = db_session
         self.gemini_client = gemini_client
         self.session_service = SessionService(db_session)
-        
-        # Configuration for context optimization
-        self.max_context_messages = 20  # Maximum messages to include in context
-        self.min_context_messages = 4   # Minimum messages to maintain conversation flow
-        self.token_estimate_per_message = 50  # Rough estimate for token calculation
     
     async def send_message(self, session_id: int, message: str) -> ChatResponse:
         """
-        Send a message within a session context and get AI response.
+        Send a message within a session context using persistent Gemini sessions.
         
         This method handles the complete chat flow:
         1. Validates session exists
-        2. Stores user message
-        3. Retrieves optimized conversation context
-        4. Sends to Gemini API with minimal context
-        5. Stores assistant response
-        6. Updates session metadata
-        7. Returns complete chat response
+        2. Gets or creates persistent Gemini session
+        3. Sends message directly to persistent session
+        4. Stores user and assistant messages
+        5. Updates session metadata
+        6. Returns complete chat response
         
         Args:
             session_id: Unique identifier of the session
@@ -82,64 +76,133 @@ class SessionChatService:
             if not message or not message.strip():
                 raise ValueError("Message content cannot be empty")
             
-            # 2. Retrieve optimized conversation context first
-            conversation_context = await self.get_conversation_context(session_id)
-            
-            # 3. Send to Gemini API with minimal context
+            # 2. Get or create persistent Gemini session
             system_instruction = get_system_instruction()
-            chat_session = self.gemini_client.create_chat_session(
-                system_instruction=system_instruction
-            )
             
-            # Build context for API call
-            context_messages = []
-            for ctx_msg in conversation_context:
-                if ctx_msg["role"] == "user":
-                    context_messages.append(f"User: {ctx_msg['content']}")
-                else:
-                    context_messages.append(f"Assistant: {ctx_msg['content']}")
+            # Try persistent session approach with comprehensive error handling
+            ai_response = None
+            persistent_session_used = True
             
-            # Create the full prompt with context
-            if context_messages:
-                context_prompt = "Previous conversation:\n" + "\n".join(context_messages) + f"\n\nUser: {message}"
-            else:
-                context_prompt = message
+            try:
+                chat_session = self.gemini_client.get_or_create_session(
+                    session_id=session_id,
+                    system_instruction=system_instruction
+                )
+                
+                # 3. Send message directly to persistent session (no manual context!)
+                ai_response = chat_session.send_message(message.strip())
+                
+            except Exception as session_error:
+                print(f"Persistent session failed for session {session_id}: {str(session_error)}")
+                
+                # If session creation fails, attempt recovery from database
+                try:
+                    chat_session = await self.recover_session_from_database(
+                        session_id=session_id,
+                        system_instruction=system_instruction
+                    )
+                    # Add recovered session to cache
+                    now = datetime.now()
+                    self.gemini_client.active_sessions[session_id] = (chat_session, now, now)
+                    self.gemini_client.sessions_recovered += 1
+                    
+                    # Try sending message with recovered session
+                    ai_response = chat_session.send_message(message.strip())
+                    print(f"Session recovery successful for session {session_id}")
+                    
+                except Exception as recovery_error:
+                    print(f"Session recovery failed for session {session_id}: {str(recovery_error)}")
+                    
+                    # Ultimate fallback: use stateless implementation
+                    try:
+                        ai_response = await self._send_with_stateless_fallback(session_id, message.strip())
+                        persistent_session_used = False
+                        print(f"Fallback to stateless mode successful for session {session_id}")
+                        
+                    except Exception as fallback_error:
+                        # All approaches failed, raise comprehensive error
+                        raise RuntimeError(
+                            f"All session approaches failed for session {session_id}. "
+                            f"Persistent session error: {str(session_error)}. "
+                            f"Recovery error: {str(recovery_error)}. "
+                            f"Fallback error: {str(fallback_error)}"
+                        )
             
-            # Get AI response
-            ai_response = chat_session.send_message(context_prompt)
-            
-            # 4. Store user message (only after successful API call)
-            user_message_data = MessageCreate(
-                session_id=session_id,
-                role="user",
-                content=message.strip(),
-                message_metadata={"timestamp": datetime.now(timezone.utc).isoformat()}
-            )
-            
-            user_message = await self.session_service.add_message(user_message_data)
+            # 4. Store user message (only after successful AI response)
+            try:
+                user_message_data = MessageCreate(
+                    session_id=session_id,
+                    role="user",
+                    content=message.strip(),
+                    message_metadata={"timestamp": datetime.now(timezone.utc).isoformat()}
+                )
+                
+                user_message = await self.session_service.add_message(user_message_data)
+            except Exception as db_error:
+                print(f"Warning: Failed to store user message for session {session_id}: {str(db_error)}")
+                # Continue with a placeholder message to maintain flow
+                user_message = None
             
             # 5. Store assistant response
-            assistant_message_data = MessageCreate(
-                session_id=session_id,
-                role="assistant",
-                content=ai_response,
-                message_metadata={
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "model_used": session.model_used,
-                    "context_messages_count": len(conversation_context)
-                }
-            )
-            
-            assistant_message = await self.session_service.add_message(assistant_message_data)
+            try:
+                assistant_message_data = MessageCreate(
+                    session_id=session_id,
+                    role="assistant",
+                    content=ai_response,
+                    message_metadata={
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "model_used": session.model_used,
+                        "persistent_session": persistent_session_used
+                    }
+                )
+                
+                assistant_message = await self.session_service.add_message(assistant_message_data)
+            except Exception as db_error:
+                print(f"Warning: Failed to store assistant message for session {session_id}: {str(db_error)}")
+                # Continue with a placeholder message to maintain flow
+                assistant_message = None
             
             # 6. Update session metadata (get current count from database)
-            current_message_count = await self.session_service.get_message_count(session_id)
-            await self._update_session_metadata(session_id, current_message_count)
+            try:
+                current_message_count = await self.session_service.get_message_count(session_id)
+                await self._update_session_metadata(session_id, current_message_count)
+            except Exception as metadata_error:
+                print(f"Warning: Failed to update session metadata for session {session_id}: {str(metadata_error)}")
+                # Continue without metadata update
             
             # Get updated session info
-            updated_session = await self.session_service.get_session(session_id)
+            try:
+                updated_session = await self.session_service.get_session(session_id)
+            except Exception as session_error:
+                print(f"Warning: Failed to get updated session info for session {session_id}: {str(session_error)}")
+                updated_session = session  # Use original session info
             
-            # 7. Return complete chat response
+            # 7. Return complete chat response (even if some database operations failed)
+            # Create placeholder messages if database storage failed
+            if user_message is None:
+                user_message = MessagePublic(
+                    id=0,
+                    session_id=session_id,
+                    role="user",
+                    content=message.strip(),
+                    timestamp=datetime.now(timezone.utc),
+                    message_metadata={"timestamp": datetime.now(timezone.utc).isoformat()}
+                )
+            
+            if assistant_message is None:
+                assistant_message = MessagePublic(
+                    id=0,
+                    session_id=session_id,
+                    role="assistant",
+                    content=ai_response,
+                    timestamp=datetime.now(timezone.utc),
+                    message_metadata={
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "model_used": session.model_used,
+                        "persistent_session": persistent_session_used
+                    }
+                )
+            
             return ChatResponse(
                 user_message=user_message,
                 assistant_message=assistant_message,
@@ -149,188 +212,141 @@ class SessionChatService:
         except ValueError:
             raise
         except Exception as e:
+            # Log detailed error context for debugging
+            print(f"Critical error in send_message for session {session_id}: {str(e)}")
+            print(f"Message content length: {len(message) if message else 0}")
+            print(f"Session service available: {self.session_service is not None}")
+            print(f"Gemini client available: {self.gemini_client is not None}")
             raise RuntimeError(f"Failed to send message: {str(e)}")
     
-    async def get_conversation_context(self, session_id: int) -> List[Dict[str, Any]]:
+    async def recover_session_from_database(self, session_id: int, system_instruction: str) -> "ChatSession":
         """
-        Retrieve and optimize conversation history for API calls.
+        Rebuild Gemini session from database message history for cache miss scenarios.
         
-        This method implements intelligent context selection to minimize token usage
-        while maintaining conversation quality. It selects the most relevant recent
-        messages and ensures conversation flow is preserved.
+        This method reconstructs a persistent Gemini session by replaying the conversation
+        history from the database. It creates a fresh session and sends historical messages
+        to rebuild the proper conversation context.
         
         Args:
-            session_id: Unique identifier of the session
+            session_id: The session ID to recover
+            system_instruction: System instruction for the new session
             
         Returns:
-            List[Dict[str, Any]]: Optimized conversation context with role and content
+            ChatSession: Recovered session with conversation history rebuilt
             
         Raises:
-            ValueError: If session doesn't exist
-            RuntimeError: If database operation fails
+            ValueError: If session doesn't exist in database
+            RuntimeError: If recovery fails due to API or database errors
         """
         try:
-            # Get recent messages from the session
+            # 1. Validate session exists in database
+            session = await self.session_service.get_session(session_id)
+            if not session:
+                raise ValueError(f"Session {session_id} not found in database")
+            
+            # 2. Get recent messages from database (limit to last 50 for performance)
             messages = await self.session_service.get_session_messages(
                 session_id=session_id,
-                limit=self.max_context_messages * 2  # Get more to allow for optimization
+                limit=50  # Last 50 messages for context
             )
             
             if not messages:
-                return []
+                # No history to recover, create fresh session
+                return self.gemini_client._create_fresh_session(session_id, system_instruction)
             
-            # Convert to context format
-            context_messages = []
-            for message in messages:
-                context_messages.append({
-                    "role": message.role,
-                    "content": message.content,
-                    "timestamp": message.timestamp.isoformat(),
-                    "id": message.id
-                })
+            # 3. Create fresh Gemini session
+            chat_session = self.gemini_client._create_fresh_session(session_id, system_instruction)
             
-            # Apply intelligent context optimization
-            optimized_context = self._optimize_context(context_messages)
+            # 4. Rebuild conversation history in proper Gemini format
+            # Process messages in chronological order to maintain conversation flow
+            recovered_messages = 0
+            for i in range(0, len(messages), 2):
+                if i < len(messages) and messages[i].role == "user":
+                    user_msg = messages[i].content
+                    
+                    try:
+                        # Send user message to rebuild history
+                        response = chat_session.send_message(user_msg)
+                        recovered_messages += 1
+                        
+                        # Optional: Verify assistant response matches database for consistency
+                        if i + 1 < len(messages) and messages[i + 1].role == "assistant":
+                            expected_response = messages[i + 1].content
+                            # Log discrepancies for monitoring (but don't fail recovery)
+                            if response.strip() != expected_response.strip():
+                                print(f"Warning: Recovery response mismatch for session {session_id}, message pair {i//2 + 1}")
+                    
+                    except Exception as msg_error:
+                        # Log individual message errors but continue recovery
+                        print(f"Warning: Failed to recover message {i} for session {session_id}: {str(msg_error)}")
+                        # If we can't recover early messages, we can still use the session
+                        continue
             
-            return optimized_context
+            # 5. Update recovery statistics
+            self.gemini_client.sessions_recovered += 1
+            
+            print(f"Successfully recovered session {session_id} with {recovered_messages} message pairs from {len(messages)} total messages")
+            return chat_session
             
         except ValueError:
             raise
         except Exception as e:
-            raise RuntimeError(f"Failed to get conversation context: {str(e)}")
+            raise RuntimeError(f"Failed to recover session {session_id} from database: {str(e)}")
     
-    def _optimize_context(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _send_with_stateless_fallback(self, session_id: int, message: str) -> str:
         """
-        Apply intelligent context optimization to minimize token usage.
+        Fallback to current stateless implementation when persistent sessions fail.
         
-        This method implements several optimization strategies:
-        1. Limit total number of messages
-        2. Ensure conversation pairs (user-assistant) are preserved
-        3. Prioritize recent messages
-        4. Maintain minimum context for conversation flow
-        5. Apply content-based filtering for relevance
-        6. Preserve conversation coherence
+        This method provides graceful degradation by using the original approach
+        of creating a fresh session and manually building context from database.
         
         Args:
-            messages: Full list of conversation messages
+            session_id: The session ID
+            message: User message content
             
         Returns:
-            List[Dict[str, Any]]: Optimized context messages
+            str: AI response from stateless session
+            
+        Raises:
+            RuntimeError: If fallback also fails
         """
-        if not messages:
-            return []
-        
-        # If we have fewer messages than the minimum, return all
-        if len(messages) <= self.min_context_messages:
-            return messages
-        
-        # If we have fewer messages than the maximum, return all
-        if len(messages) <= self.max_context_messages:
-            return messages
-        
-        # Apply multi-stage optimization
-        optimized_messages = self._apply_recency_optimization(messages)
-        optimized_messages = self._ensure_conversation_pairs(optimized_messages, messages)
-        optimized_messages = self._apply_content_filtering(optimized_messages)
-        
-        return optimized_messages
-    
-    def _apply_recency_optimization(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Apply recency-based optimization to prioritize recent messages.
-        
-        Args:
-            messages: Full list of conversation messages
+        try:
+            print(f"Using stateless fallback for session {session_id}")
             
-        Returns:
-            List[Dict[str, Any]]: Messages optimized for recency
-        """
-        # Take the most recent messages up to max_context_messages
-        return messages[-self.max_context_messages:]
-    
-    def _ensure_conversation_pairs(self, optimized_messages: List[Dict[str, Any]], 
-                                 all_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Ensure conversation pairs (user-assistant) are preserved for coherence.
-        
-        Args:
-            optimized_messages: Currently optimized message list
-            all_messages: Full message history for reference
+            # Get system instruction
+            system_instruction = get_system_instruction()
             
-        Returns:
-            List[Dict[str, Any]]: Messages with preserved conversation pairs
-        """
-        if not optimized_messages:
-            return optimized_messages
-        
-        # Ensure we start with a user message if possible
-        if optimized_messages[0]["role"] == "assistant":
-            # Find the user message that precedes this assistant message
-            for i, msg in enumerate(all_messages):
-                if msg["id"] == optimized_messages[0]["id"] and i > 0:
-                    if all_messages[i-1]["role"] == "user":
-                        # Replace the first message with the user message
-                        optimized_messages[0] = all_messages[i-1]
-                    break
-        
-        # Ensure we end with a complete pair if possible
-        if len(optimized_messages) > 1 and optimized_messages[-1]["role"] == "user":
-            # If the last message is from user, try to include the assistant response
-            for i, msg in enumerate(all_messages):
-                if (msg["id"] == optimized_messages[-1]["id"] and 
-                    i < len(all_messages) - 1 and 
-                    all_messages[i+1]["role"] == "assistant"):
-                    # Add the assistant response if we have room
-                    if len(optimized_messages) < self.max_context_messages:
-                        optimized_messages.append(all_messages[i+1])
-                    break
-        
-        return optimized_messages
-    
-    def _apply_content_filtering(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Apply content-based filtering to maintain conversation quality.
-        
-        This method filters out very short or repetitive messages that don't
-        contribute significantly to conversation context.
-        
-        Args:
-            messages: Messages to filter
+            # Create temporary session (original behavior)
+            chat_session = self.gemini_client.create_chat_session(system_instruction)
             
-        Returns:
-            List[Dict[str, Any]]: Content-filtered messages
-        """
-        if len(messages) <= self.min_context_messages:
-            return messages
-        
-        filtered_messages = []
-        seen_content = set()
-        
-        for message in messages:
-            content = message["content"].strip().lower()
+            # Get recent messages for context (simplified version)
+            messages = await self.session_service.get_session_messages(
+                session_id=session_id,
+                limit=10  # Limit context for fallback
+            )
             
-            # Always keep messages if we're under minimum
-            if len(filtered_messages) < self.min_context_messages:
-                filtered_messages.append(message)
-                seen_content.add(content)
-                continue
+            # Build context manually (original behavior)
+            context_messages = []
+            for msg in messages:
+                if msg.role == "user":
+                    context_messages.append(f"User: {msg.content}")
+                else:
+                    context_messages.append(f"Assistant: {msg.content}")
             
-            # Skip very short messages (less than 10 characters) when over minimum
-            if len(content) < 10:
-                continue
+            # Create the full prompt with context
+            if context_messages:
+                context_prompt = "Previous conversation:\n" + "\n".join(context_messages) + f"\n\nUser: {message}"
+            else:
+                context_prompt = message
             
-            # Skip exact duplicates when over minimum
-            if content in seen_content:
-                continue
+            # Send with manual context
+            ai_response = chat_session.send_message(context_prompt)
             
-            filtered_messages.append(message)
-            seen_content.add(content)
+            print(f"Stateless fallback successful for session {session_id}")
+            return ai_response
             
-            # Stop if we've reached our target
-            if len(filtered_messages) >= self.max_context_messages:
-                break
-        
-        return filtered_messages
+        except Exception as e:
+            raise RuntimeError(f"Stateless fallback also failed for session {session_id}: {str(e)}")
     
     async def _update_session_metadata(self, session_id: int, total_messages: int) -> None:
         """
@@ -358,8 +374,7 @@ class SessionChatService:
             current_metadata.update({
                 "last_activity": datetime.now(timezone.utc).isoformat(),
                 "total_messages": total_messages,
-                "last_context_optimization": datetime.now(timezone.utc).isoformat(),
-                "estimated_token_savings": self._calculate_token_savings(total_messages)
+                "persistent_sessions_enabled": True
             })
             
             # Update session with new metadata
@@ -370,33 +385,3 @@ class SessionChatService:
         except Exception as e:
             # Log error but don't fail the chat operation
             print(f"Warning: Failed to update session metadata: {str(e)}")
-    
-    def _calculate_token_savings(self, total_messages: int) -> Dict[str, Any]:
-        """
-        Calculate estimated token savings from context optimization.
-        
-        This method estimates the token savings achieved by using server-side
-        conversation history instead of sending full history with each request.
-        
-        Args:
-            total_messages: Total number of messages in the conversation
-            
-        Returns:
-            Dict[str, Any]: Token savings statistics
-        """
-        if total_messages <= self.max_context_messages:
-            return {
-                "messages_saved": 0,
-                "estimated_tokens_saved": 0,
-                "optimization_percentage": 0
-            }
-        
-        messages_saved = total_messages - self.max_context_messages
-        estimated_tokens_saved = messages_saved * self.token_estimate_per_message
-        optimization_percentage = (messages_saved / total_messages) * 100
-        
-        return {
-            "messages_saved": messages_saved,
-            "estimated_tokens_saved": estimated_tokens_saved,
-            "optimization_percentage": round(optimization_percentage, 2)
-        }

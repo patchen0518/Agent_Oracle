@@ -15,7 +15,7 @@ os.environ["TESTING"] = "true"
 
 from backend.main import app
 from backend.config.database import get_session, cleanup_test_database
-from backend.models.session_models import Session, Message
+from backend.models.session_models import Session as SessionModel, Message
 
 
 @pytest.fixture(scope="session", autouse=True)
