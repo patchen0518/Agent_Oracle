@@ -49,7 +49,23 @@ The primary goal is to build a robust, well-designed, and maintainable software 
 
 ### 🔄 Current Development
 
-### MVP 1.2: LangChain Integration & Smart Memory (IN PROGRESS)
+### MVP 1.2: Persistent Gemini Sessions (IN PROGRESS)
+* **Session Management:** True persistent Gemini API sessions with intelligent memory management
+* **Performance Optimization:** 60-80% reduction in API token usage and 30-50% faster response times
+* **Context Handling:** Eliminate manual context reconstruction in favor of Gemini's native conversation management
+* **Memory Management:** Smart session caching with 1-hour expiration and automatic cleanup
+* **System Instructions:** Proper system instruction handling that works with Gemini's session model
+* **Features:**
+  - Persistent Gemini chat sessions cached in memory for active conversations
+  - Automatic session cleanup with configurable expiration (1 hour default)
+  - Session recovery from database history after server restarts or cache misses
+  - Graceful fallback to current implementation when session management fails
+  - Comprehensive monitoring and observability of session lifecycle and performance
+  - Feature flag support for safe deployment and gradual rollout
+
+### 🔮 Future Phases (Planned)
+
+### MVP 1.3: LangChain Integration & Smart Memory
 * **Memory Management:** LangChain integration for intelligent conversation handling
 * **Summarization:** Automatic summarization of long conversations to manage token limits
 * **Entity Extraction:** Remember important facts and preferences within sessions
@@ -62,14 +78,12 @@ The primary goal is to build a robust, well-designed, and maintainable software 
   - Multiple memory strategies per session type
   - Enhanced conversation continuity and relevance
 
-### 🔮 Future Phases (Planned)
-
-### MVP 1.3: Web Search & Tool Use
+### MVP 1.4: Web Search & Tool Use
 * **Capability:** Agent will perform internet searches to answer questions
 * **Mechanism:** Gemini API's function calling (tool use) feature integrated with sessions
 * **Context:** Tools will have access to session history and extracted entities
 
-### MVP 1.4: Agentic Reflection (Self-Correction)
+### MVP 1.5: Agentic Reflection (Self-Correction)
 * **Capability:** Agent will review search results before responding
 * **Mechanism:** Self-correction loop managed with LangChain framework
 * **Session Integration:** Reflection results stored in session context
@@ -592,7 +606,14 @@ Set via `SYSTEM_INSTRUCTION_TYPE` in your `.env` file.
 
 ## 🔄 Upcoming Features (MVP 1.2+)
 
-### Smart Memory (MVP 1.2)
+### Persistent Gemini Sessions (MVP 1.2)
+- **True Session Persistence:** Maintain Gemini API sessions in memory for active conversations
+- **Performance Optimization:** Dramatic reduction in API token usage and response times
+- **Smart Memory Management:** Automatic session cleanup with configurable expiration
+- **Session Recovery:** Rebuild sessions from database history when needed
+- **Graceful Fallbacks:** Maintain reliability with fallback to current implementation
+
+### Smart Memory (MVP 1.3+)
 - **Conversation Summarization:** Automatic summarization of long conversations
 - **Entity Extraction:** Remember important facts and user preferences
 - **Context Optimization:** Intelligent selection of relevant conversation history
@@ -675,7 +696,17 @@ GEMINI_MODEL=gemini-2.5-flash-lite
 - ✅ **UI:** Session sidebar, controls, and mobile-responsive design
 - ✅ **Testing:** Comprehensive test coverage for all session functionality
 
-### Next: Smart Memory (MVP 1.2)
+### Next: Persistent Gemini Sessions (MVP 1.2)
+**Objective:** Implement true persistent Gemini API sessions with intelligent memory management
+
+**Key Goals:**
+- Replace manual context reconstruction with native Gemini session management
+- Achieve 60-80% reduction in API token usage and 30-50% faster response times
+- Implement smart session caching with automatic cleanup and recovery mechanisms
+- Ensure system instructions work properly with Gemini's session model
+- Provide comprehensive monitoring and safe deployment with feature flags
+
+### Future: Smart Memory (MVP 1.3+)
 **Objective:** Implement intelligent conversation memory with LangChain integration
 
 ---
