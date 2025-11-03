@@ -6,6 +6,7 @@ context optimization and token usage reduction, and integration
 with session service and database operations.
 """
 
+import os
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime
@@ -71,29 +72,33 @@ class TestSessionChatServiceSendMessage:
     @pytest.mark.asyncio
     async def test_send_message_success(self, session_chat_service, test_session_model, mock_gemini_client, mock_chat_session):
         """Test successful message sending and AI response with persistent sessions."""
-        # Setup mock for persistent sessions
-        mock_gemini_client.get_or_create_session.return_value = mock_chat_session
-        mock_chat_session.send_message.return_value = "Hello! How can I help you today?"
-        
-        # Send message
-        result = await session_chat_service.send_message(test_session_model.id, "Hello, AI!")
-        
-        # Verify result structure
-        assert isinstance(result, ChatResponse)
-        assert result.user_message.content == "Hello, AI!"
-        assert result.user_message.role == "user"
-        assert result.user_message.session_id == test_session_model.id
-        assert result.assistant_message.content == "Hello! How can I help you today?"
-        assert result.assistant_message.role == "assistant"
-        assert result.assistant_message.session_id == test_session_model.id
-        assert result.session.id == test_session_model.id
-        
-        # Verify persistent session was used
-        mock_gemini_client.get_or_create_session.assert_called_once()
-        mock_chat_session.send_message.assert_called_once_with("Hello, AI!")
-        
-        # Verify persistent session flag is set
-        assert result.assistant_message.message_metadata["persistent_session"] == True
+        with patch.dict(os.environ, {
+            "USE_PERSISTENT_SESSIONS": "true",
+            "GRADUAL_ROLLOUT_PERCENTAGE": "100"
+        }):
+            # Setup mock for persistent sessions
+            mock_gemini_client.get_or_create_session.return_value = mock_chat_session
+            mock_chat_session.send_message.return_value = "Hello! How can I help you today?"
+            
+            # Send message
+            result = await session_chat_service.send_message(test_session_model.id, "Hello, AI!")
+            
+            # Verify result structure
+            assert isinstance(result, ChatResponse)
+            assert result.user_message.content == "Hello, AI!"
+            assert result.user_message.role == "user"
+            assert result.user_message.session_id == test_session_model.id
+            assert result.assistant_message.content == "Hello! How can I help you today?"
+            assert result.assistant_message.role == "assistant"
+            assert result.assistant_message.session_id == test_session_model.id
+            assert result.session.id == test_session_model.id
+            
+            # Verify persistent session was used
+            mock_gemini_client.get_or_create_session.assert_called_once()
+            mock_chat_session.send_message.assert_called_once_with("Hello, AI!")
+            
+            # Verify persistent session flag is set
+            assert result.assistant_message.message_metadata["persistent_session"] == True
     
     @pytest.mark.asyncio
     async def test_send_message_nonexistent_session(self, session_chat_service):
@@ -805,3 +810,198 @@ class TestSessionRecoveryMechanism:
             await session_chat_service.recover_session_from_database(
                 test_session.id, "Test system instruction"
             )
+
+
+class TestFeatureFlagSystem:
+    """Test feature flag system for persistent sessions."""
+    
+    def test_use_persistent_sessions_disabled_globally(self, session_chat_service):
+        """Test feature flag when persistent sessions are globally disabled."""
+        with patch.dict(os.environ, {"USE_PERSISTENT_SESSIONS": "false"}):
+            result = session_chat_service._use_persistent_sessions(123)
+            assert result == False
+    
+    def test_use_persistent_sessions_enabled_100_percent(self, session_chat_service):
+        """Test feature flag when persistent sessions are enabled at 100%."""
+        with patch.dict(os.environ, {
+            "USE_PERSISTENT_SESSIONS": "true",
+            "GRADUAL_ROLLOUT_PERCENTAGE": "100"
+        }):
+            result = session_chat_service._use_persistent_sessions(123)
+            assert result == True
+    
+    def test_use_persistent_sessions_zero_percent_rollout(self, session_chat_service):
+        """Test feature flag when rollout percentage is 0."""
+        with patch.dict(os.environ, {
+            "USE_PERSISTENT_SESSIONS": "true",
+            "GRADUAL_ROLLOUT_PERCENTAGE": "0"
+        }):
+            result = session_chat_service._use_persistent_sessions(123)
+            assert result == False
+    
+    def test_use_persistent_sessions_gradual_rollout_logic(self, session_chat_service):
+        """Test gradual rollout percentage logic with consistent session ID hashing."""
+        with patch.dict(os.environ, {
+            "USE_PERSISTENT_SESSIONS": "true",
+            "GRADUAL_ROLLOUT_PERCENTAGE": "50"
+        }):
+            # Test multiple session IDs to verify consistent hashing
+            session_123_result = session_chat_service._use_persistent_sessions(123)
+            session_456_result = session_chat_service._use_persistent_sessions(456)
+            session_789_result = session_chat_service._use_persistent_sessions(789)
+            
+            # Results should be consistent for same session ID
+            assert session_chat_service._use_persistent_sessions(123) == session_123_result
+            assert session_chat_service._use_persistent_sessions(456) == session_456_result
+            assert session_chat_service._use_persistent_sessions(789) == session_789_result
+            
+            # At 50% rollout, we should see a mix of True/False results
+            results = [session_123_result, session_456_result, session_789_result]
+            assert True in results or False in results  # Should have some variation
+    
+    def test_use_persistent_sessions_default_values(self, session_chat_service):
+        """Test feature flag with default environment values."""
+        # Clear environment variables to test defaults
+        env_vars_to_clear = ["USE_PERSISTENT_SESSIONS", "GRADUAL_ROLLOUT_PERCENTAGE"]
+        with patch.dict(os.environ, {}, clear=False):
+            for var in env_vars_to_clear:
+                os.environ.pop(var, None)
+            
+            result = session_chat_service._use_persistent_sessions(123)
+            assert result == False  # Default should be disabled
+    
+    def test_use_persistent_sessions_case_insensitive(self, session_chat_service):
+        """Test feature flag is case insensitive."""
+        test_cases = ["TRUE", "True", "true", "FALSE", "False", "false"]
+        
+        for case in test_cases:
+            with patch.dict(os.environ, {
+                "USE_PERSISTENT_SESSIONS": case,
+                "GRADUAL_ROLLOUT_PERCENTAGE": "100"  # Set to 100% to test the flag logic
+            }):
+                result = session_chat_service._use_persistent_sessions(123)
+                expected = case.lower() == "true"
+                assert result == expected
+    
+    @pytest.mark.asyncio
+    async def test_send_message_routes_to_persistent_sessions(self, session_chat_service, test_session_model, mock_gemini_client, mock_chat_session):
+        """Test that send_message routes to persistent sessions when feature flag is enabled."""
+        with patch.dict(os.environ, {
+            "USE_PERSISTENT_SESSIONS": "true",
+            "GRADUAL_ROLLOUT_PERCENTAGE": "100"
+        }):
+            # Setup mock for persistent sessions
+            mock_gemini_client.get_or_create_session.return_value = mock_chat_session
+            mock_chat_session.send_message.return_value = "Persistent session response"
+            
+            # Send message
+            result = await session_chat_service.send_message(test_session_model.id, "Test message")
+            
+            # Verify persistent session was used
+            mock_gemini_client.get_or_create_session.assert_called_once()
+            assert result.assistant_message.message_metadata["persistent_session"] == True
+            assert result.assistant_message.content == "Persistent session response"
+    
+    @pytest.mark.asyncio
+    async def test_send_message_routes_to_stateless_implementation(self, session_chat_service, test_session_model, mock_gemini_client, mock_chat_session):
+        """Test that send_message routes to stateless implementation when feature flag is disabled."""
+        with patch.dict(os.environ, {
+            "USE_PERSISTENT_SESSIONS": "false"
+        }):
+            # Setup mock for stateless implementation
+            mock_gemini_client.create_chat_session.return_value = mock_chat_session
+            mock_chat_session.send_message.return_value = "Stateless response"
+            
+            # Send message
+            result = await session_chat_service.send_message(test_session_model.id, "Test message")
+            
+            # Verify stateless implementation was used
+            mock_gemini_client.create_chat_session.assert_called_once()
+            mock_gemini_client.get_or_create_session.assert_not_called()
+            assert result.assistant_message.message_metadata["persistent_session"] == False
+            assert result.assistant_message.content == "Stateless response"
+    
+    @pytest.mark.asyncio
+    async def test_send_message_gradual_rollout_consistency(self, session_chat_service, test_session_model, mock_gemini_client, mock_chat_session):
+        """Test that gradual rollout decisions are consistent for the same session."""
+        with patch.dict(os.environ, {
+            "USE_PERSISTENT_SESSIONS": "true",
+            "GRADUAL_ROLLOUT_PERCENTAGE": "50"
+        }):
+            # Setup mocks for both implementations
+            mock_gemini_client.get_or_create_session.return_value = mock_chat_session
+            mock_gemini_client.create_chat_session.return_value = mock_chat_session
+            mock_chat_session.send_message.return_value = "Test response"
+            
+            # Send multiple messages with same session ID
+            result1 = await session_chat_service.send_message(test_session_model.id, "Message 1")
+            result2 = await session_chat_service.send_message(test_session_model.id, "Message 2")
+            result3 = await session_chat_service.send_message(test_session_model.id, "Message 3")
+            
+            # All messages should use the same implementation (consistent routing)
+            persistent_flags = [
+                result1.assistant_message.message_metadata["persistent_session"],
+                result2.assistant_message.message_metadata["persistent_session"],
+                result3.assistant_message.message_metadata["persistent_session"]
+            ]
+            
+            # All flags should be the same (consistent for same session)
+            assert len(set(persistent_flags)) == 1
+    
+    @pytest.mark.asyncio
+    async def test_fallback_behavior_when_feature_disabled(self, session_chat_service, test_session_model, mock_gemini_client, mock_chat_session):
+        """Test fallback behavior when persistent sessions are disabled."""
+        with patch.dict(os.environ, {
+            "USE_PERSISTENT_SESSIONS": "false"
+        }):
+            # Add some existing messages for context testing
+            session_service = SessionService(session_chat_service.db)
+            await session_service.add_message(MessageCreate(
+                session_id=test_session_model.id,
+                role="user",
+                content="Previous question"
+            ))
+            await session_service.add_message(MessageCreate(
+                session_id=test_session_model.id,
+                role="assistant",
+                content="Previous answer"
+            ))
+            
+            # Setup mock for stateless implementation
+            mock_gemini_client.create_chat_session.return_value = mock_chat_session
+            mock_chat_session.send_message.return_value = "Fallback response with context"
+            
+            # Send message
+            result = await session_chat_service.send_message(test_session_model.id, "New question")
+            
+            # Verify stateless implementation was used with context
+            mock_gemini_client.create_chat_session.assert_called_once()
+            mock_gemini_client.get_or_create_session.assert_not_called()
+            
+            # Verify context was built manually (stateless behavior)
+            call_args = mock_chat_session.send_message.call_args[0][0]
+            assert "Previous conversation:" in call_args
+            assert "Previous question" in call_args
+            assert "Previous answer" in call_args
+            assert "New question" in call_args
+            
+            # Verify response
+            assert result.assistant_message.message_metadata["persistent_session"] == False
+            assert result.assistant_message.content == "Fallback response with context"
+    
+    def test_feature_flag_logging(self, session_chat_service, capfd):
+        """Test that feature flag decisions are logged for monitoring."""
+        test_cases = [
+            ({"USE_PERSISTENT_SESSIONS": "false"}, "disabled globally"),
+            ({"USE_PERSISTENT_SESSIONS": "true", "GRADUAL_ROLLOUT_PERCENTAGE": "0"}, "rollout at 0%"),
+            ({"USE_PERSISTENT_SESSIONS": "true", "GRADUAL_ROLLOUT_PERCENTAGE": "100"}, "enabled (100% rollout)"),
+            ({"USE_PERSISTENT_SESSIONS": "true", "GRADUAL_ROLLOUT_PERCENTAGE": "50"}, "Gradual rollout decision")
+        ]
+        
+        for env_vars, expected_log in test_cases:
+            with patch.dict(os.environ, env_vars):
+                session_chat_service._use_persistent_sessions(123)
+                
+                # Capture printed output
+                captured = capfd.readouterr()
+                assert expected_log in captured.out

@@ -6,6 +6,8 @@ intelligent conversation context optimization for token reduction and
 integrating with the Gemini API for AI response generation.
 """
 
+import os
+import hashlib
 from typing import List, Dict, Any, Optional
 from sqlmodel import Session
 from datetime import datetime, timezone
@@ -43,11 +45,75 @@ class SessionChatService:
         self.gemini_client = gemini_client
         self.session_service = SessionService(db_session)
     
+    def _use_persistent_sessions(self, session_id: int) -> bool:
+        """
+        Determine if persistent sessions should be used for this request.
+        
+        This method implements feature flag logic with gradual rollout capability:
+        1. Check if persistent sessions are globally enabled
+        2. Apply percentage-based rollout logic using session ID hash
+        3. Log feature flag decisions for monitoring
+        
+        Args:
+            session_id: Session ID used for consistent rollout decisions
+            
+        Returns:
+            bool: True if persistent sessions should be used, False otherwise
+        """
+        # Check global feature flag
+        use_persistent = os.getenv("USE_PERSISTENT_SESSIONS", "false").lower() == "true"
+        if not use_persistent:
+            print(f"Persistent sessions disabled globally for session {session_id}")
+            return False
+        
+        # Apply gradual rollout percentage
+        rollout_percentage = int(os.getenv("GRADUAL_ROLLOUT_PERCENTAGE", "0"))
+        if rollout_percentage <= 0:
+            print(f"Gradual rollout at 0% for session {session_id}")
+            return False
+        
+        if rollout_percentage >= 100:
+            print(f"Persistent sessions enabled (100% rollout) for session {session_id}")
+            return True
+        
+        # Use session ID hash for consistent rollout decisions
+        session_hash = int(hashlib.md5(str(session_id).encode()).hexdigest(), 16)
+        session_percentage = session_hash % 100
+        
+        enabled = session_percentage < rollout_percentage
+        print(f"Gradual rollout decision for session {session_id}: {enabled} (rollout: {rollout_percentage}%, session hash: {session_percentage}%)")
+        
+        return enabled
+
     async def send_message(self, session_id: int, message: str) -> ChatResponse:
         """
-        Send a message within a session context using persistent Gemini sessions.
+        Send a message within a session context with feature flag routing.
         
-        This method handles the complete chat flow:
+        This method routes to either persistent sessions or stateless implementation
+        based on feature flag configuration and gradual rollout settings.
+        
+        Args:
+            session_id: Unique identifier of the session
+            message: User message content
+            
+        Returns:
+            ChatResponse: Complete response including user message, assistant response, and session info
+            
+        Raises:
+            ValueError: If session doesn't exist or message is invalid
+            RuntimeError: If database or API operations fail
+        """
+        # Route based on feature flag
+        if self._use_persistent_sessions(session_id):
+            return await self._send_with_persistent_sessions(session_id, message)
+        else:
+            return await self._send_with_stateless_implementation(session_id, message)
+
+    async def _send_with_persistent_sessions(self, session_id: int, message: str) -> ChatResponse:
+        """
+        Send a message using persistent Gemini sessions.
+        
+        This method handles the complete chat flow with persistent sessions:
         1. Validates session exists
         2. Gets or creates persistent Gemini session
         3. Sends message directly to persistent session
@@ -385,3 +451,105 @@ class SessionChatService:
         except Exception as e:
             # Log error but don't fail the chat operation
             print(f"Warning: Failed to update session metadata: {str(e)}")
+
+    async def _send_with_stateless_implementation(self, session_id: int, message: str) -> ChatResponse:
+        """
+        Send a message using the current stateless implementation.
+        
+        This method provides the original behavior when persistent sessions are disabled:
+        1. Creates a fresh Gemini session for each message
+        2. Manually builds conversation context from database
+        3. Sends message with reconstructed context
+        4. Stores messages and updates session metadata
+        
+        Args:
+            session_id: Unique identifier of the session
+            message: User message content
+            
+        Returns:
+            ChatResponse: Complete response including user message, assistant response, and session info
+            
+        Raises:
+            ValueError: If session doesn't exist or message is invalid
+            RuntimeError: If database or API operations fail
+        """
+        try:
+            # 1. Validate session exists
+            session = await self.session_service.get_session(session_id)
+            if not session:
+                raise ValueError(f"Session {session_id} not found")
+            
+            # Validate message content
+            if not message or not message.strip():
+                raise ValueError("Message content cannot be empty")
+            
+            # 2. Get system instruction and create fresh session
+            system_instruction = get_system_instruction()
+            chat_session = self.gemini_client.create_chat_session(system_instruction)
+            
+            # 3. Build conversation context from database
+            messages = await self.session_service.get_session_messages(
+                session_id=session_id,
+                limit=20  # Reasonable context limit for stateless mode
+            )
+            
+            # Build context manually (original behavior)
+            context_messages = []
+            for msg in messages:
+                if msg.role == "user":
+                    context_messages.append(f"User: {msg.content}")
+                else:
+                    context_messages.append(f"Assistant: {msg.content}")
+            
+            # Create the full prompt with context
+            if context_messages:
+                context_prompt = "Previous conversation:\n" + "\n".join(context_messages) + f"\n\nUser: {message.strip()}"
+            else:
+                context_prompt = message.strip()
+            
+            # 4. Send message with manual context
+            ai_response = chat_session.send_message(context_prompt)
+            
+            # 5. Store user message
+            user_message_data = MessageCreate(
+                session_id=session_id,
+                role="user",
+                content=message.strip(),
+                message_metadata={"timestamp": datetime.now(timezone.utc).isoformat()}
+            )
+            
+            user_message = await self.session_service.add_message(user_message_data)
+            
+            # 6. Store assistant response
+            assistant_message_data = MessageCreate(
+                session_id=session_id,
+                role="assistant",
+                content=ai_response,
+                message_metadata={
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "model_used": session.model_used,
+                    "persistent_session": False
+                }
+            )
+            
+            assistant_message = await self.session_service.add_message(assistant_message_data)
+            
+            # 7. Update session metadata
+            current_message_count = await self.session_service.get_message_count(session_id)
+            await self._update_session_metadata(session_id, current_message_count)
+            
+            # Get updated session info
+            updated_session = await self.session_service.get_session(session_id)
+            
+            # 8. Return complete chat response
+            return ChatResponse(
+                user_message=user_message,
+                assistant_message=assistant_message,
+                session=updated_session
+            )
+            
+        except ValueError:
+            raise
+        except Exception as e:
+            print(f"Error in stateless implementation for session {session_id}: {str(e)}")
+            raise RuntimeError(f"Failed to send message with stateless implementation: {str(e)}")
