@@ -13,9 +13,16 @@ from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AI
 from langchain_core.exceptions import LangChainException
 
 from backend.utils.logging_config import get_logger
-from backend.exceptions import AIServiceError
+from backend.exceptions import (
+    AIServiceError,
+    LangChainError,
+    MessageProcessingError,
+    LangChainExceptionMapper,
+    handle_langchain_exception
+)
 from backend.config.system_instructions import get_system_instruction, SYSTEM_INSTRUCTIONS
 from backend.services.context_optimizer import ContextOptimizer, ContextConfig, SummarizationMiddleware
+from backend.services.memory_fallback import MemoryFallbackManager, FallbackConfig, MemoryOperationWrapper
 
 
 class LangChainChatSession:
@@ -58,6 +65,10 @@ class LangChainChatSession:
         # Initialize summarization middleware
         self.summarization_middleware = SummarizationMiddleware(self.context_optimizer)
         
+        # Initialize memory fallback manager
+        fallback_config = FallbackConfig()
+        self.fallback_manager = MemoryFallbackManager(session_id=session_id, config=fallback_config)
+        
         # Initialize conversation history with system message if provided
         self.conversation_history: List[BaseMessage] = []
         
@@ -69,7 +80,7 @@ class LangChainChatSession:
     
     def send_message(self, message: str) -> str:
         """
-        Send a message to the chat session and get response with context optimization.
+        Send a message to the chat session and get response with context optimization and fallback support.
         
         Args:
             message: The user message to send
@@ -84,18 +95,18 @@ class LangChainChatSession:
             # Create human message
             human_message = HumanMessage(content=message)
             
-            # Add to conversation history
-            self.conversation_history.append(human_message)
+            # Add to conversation history with fallback support
+            self._add_message_with_fallback(human_message)
             
-            # Apply context optimization through summarization middleware
-            optimized_context = self.summarization_middleware.process_messages(self.conversation_history)
+            # Apply context optimization through summarization middleware with fallback
+            optimized_context = self._get_optimized_context_with_fallback()
             
             # Get response from model using optimized context
             response = self.chat_model.invoke(optimized_context)
             
-            # Add AI response to conversation history
+            # Add AI response to conversation history with fallback support
             ai_message = AIMessage(content=response.content)
-            self.conversation_history.append(ai_message)
+            self._add_message_with_fallback(ai_message)
             
             self.logger.debug(
                 f"Session {self.session_id}: Sent message and received response "
@@ -106,14 +117,24 @@ class LangChainChatSession:
             
         except LangChainException as e:
             self.logger.error(f"LangChain error in session {self.session_id}: {str(e)}")
-            raise AIServiceError(f"LangChain error: {str(e)}", e)
+            mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                e,
+                f"Failed to send message in session {self.session_id}",
+                session_id=self.session_id
+            )
+            raise mapped_error
         except Exception as e:
             self.logger.error(f"Failed to send message in session {self.session_id}: {str(e)}")
-            raise AIServiceError(f"Failed to send message: {str(e)}", e)
+            mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                e,
+                f"Failed to send message in session {self.session_id}",
+                session_id=self.session_id
+            )
+            raise mapped_error
     
     def send_message_stream(self, message: str) -> Iterator[str]:
         """
-        Send a message and get streaming response with context optimization.
+        Send a message and get streaming response with context optimization and fallback support.
         
         Args:
             message: The user message to send
@@ -128,11 +149,11 @@ class LangChainChatSession:
             # Create human message
             human_message = HumanMessage(content=message)
             
-            # Add to conversation history
-            self.conversation_history.append(human_message)
+            # Add to conversation history with fallback support
+            self._add_message_with_fallback(human_message)
             
-            # Apply context optimization through summarization middleware
-            optimized_context = self.summarization_middleware.process_messages(self.conversation_history)
+            # Apply context optimization through summarization middleware with fallback
+            optimized_context = self._get_optimized_context_with_fallback()
             
             # Stream response from model using optimized context
             response_content = ""
@@ -141,9 +162,9 @@ class LangChainChatSession:
                 response_content += chunk_content
                 yield chunk_content
             
-            # Add complete AI response to conversation history
+            # Add complete AI response to conversation history with fallback support
             ai_message = AIMessage(content=response_content)
-            self.conversation_history.append(ai_message)
+            self._add_message_with_fallback(ai_message)
             
             self.logger.debug(
                 f"Session {self.session_id}: Sent streaming message and received response "
@@ -152,10 +173,20 @@ class LangChainChatSession:
             
         except LangChainException as e:
             self.logger.error(f"LangChain streaming error in session {self.session_id}: {str(e)}")
-            raise AIServiceError(f"LangChain streaming error: {str(e)}", e)
+            mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                e,
+                f"Failed to send streaming message in session {self.session_id}",
+                session_id=self.session_id
+            )
+            raise mapped_error
         except Exception as e:
             self.logger.error(f"Failed to send streaming message in session {self.session_id}: {str(e)}")
-            raise AIServiceError(f"Failed to send streaming message: {str(e)}", e)
+            mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                e,
+                f"Failed to send streaming message in session {self.session_id}",
+                session_id=self.session_id
+            )
+            raise mapped_error
     
     def get_conversation_history(self) -> List[BaseMessage]:
         """
@@ -197,7 +228,7 @@ class LangChainChatSession:
     
     def restore_context(self, messages: List[Dict[str, str]]) -> None:
         """
-        Restore conversation context from database message dictionaries.
+        Restore conversation context from database message dictionaries with fallback support.
         
         Efficiently converts database message format to LangChain message objects
         with intelligent context selection and memory optimization.
@@ -211,25 +242,18 @@ class LangChainChatSession:
                 self.logger.debug(f"Session {self.session_id}: No messages to restore")
                 return
             
-            # Apply intelligent message selection for memory restoration
-            selected_messages = self._select_messages_for_restoration(messages)
+            # Use fallback-enabled restore context
+            success = self._restore_context_with_fallback(messages)
             
-            # Convert database messages to LangChain message objects
-            restored_count = 0
-            for message in selected_messages:
-                langchain_message = self._convert_database_message_to_langchain(message)
-                if langchain_message:
-                    self.conversation_history.append(langchain_message)
-                    restored_count += 1
-            
-            # Apply context optimization after restoration if needed
-            if restored_count > 0:
-                self._optimize_restored_context()
-            
-            self.logger.info(
-                f"Session {self.session_id}: Restored {restored_count} messages from {len(messages)} "
-                f"database messages to context (final context: {len(self.conversation_history)} messages)"
-            )
+            if success:
+                self.logger.info(
+                    f"Session {self.session_id}: Successfully restored context from {len(messages)} "
+                    f"database messages (final context: {len(self.conversation_history)} messages)"
+                )
+            else:
+                self.logger.warning(
+                    f"Session {self.session_id}: Context restoration failed, continuing with empty context"
+                )
             
         except Exception as e:
             self.logger.warning(f"Failed to restore context for session {self.session_id}: {str(e)}")
@@ -299,6 +323,7 @@ class LangChainChatSession:
             content = message.get("content", "").strip()
             
             if not content:
+                self.logger.debug(f"Session {self.session_id}: Skipping empty message content")
                 return None
             
             # Convert based on role
@@ -314,7 +339,24 @@ class LangChainChatSession:
                 return None
                 
         except Exception as e:
-            self.logger.warning(f"Session {self.session_id}: Failed to convert message: {str(e)}")
+            # Create detailed error for message processing failures
+            error_context = {
+                "message_role": message.get("role", "unknown"),
+                "content_length": len(message.get("content", "")),
+                "message_keys": list(message.keys())
+            }
+            
+            mapped_error = MessageProcessingError(
+                f"Failed to convert database message to LangChain format",
+                e,
+                message_role=message.get("role"),
+                session_id=self.session_id
+            )
+            
+            self.logger.warning(
+                f"Session {self.session_id}: Message conversion failed: {str(mapped_error)}. "
+                f"Context: {error_context}"
+            )
             return None
     
     def _optimize_restored_context(self) -> None:
@@ -495,6 +537,87 @@ class LangChainChatSession:
         self.summarization_middleware.reset_stats()
         self.logger.debug(f"Session {self.session_id}: Reset optimization statistics")
     
+    def _add_message_with_fallback(self, message: BaseMessage) -> bool:
+        """
+        Add message to conversation history with fallback support.
+        
+        Args:
+            message: The message to add
+            
+        Returns:
+            bool: True if message was added successfully
+        """
+        def primary_add_message(**kwargs):
+            msg = kwargs["message"]
+            self.conversation_history.append(msg)
+            return True
+        
+        return self.fallback_manager.execute_with_fallback(
+            primary_add_message,
+            "add_message",
+            message=message
+        )
+    
+    def _get_optimized_context_with_fallback(self) -> List[BaseMessage]:
+        """
+        Get optimized context with fallback support.
+        
+        Returns:
+            List[BaseMessage]: Optimized conversation context
+        """
+        def primary_get_context(**kwargs):
+            return self.summarization_middleware.process_messages(self.conversation_history)
+        
+        try:
+            return self.fallback_manager.execute_with_fallback(
+                primary_get_context,
+                "get_optimized_context"
+            )
+        except Exception as e:
+            # If optimization fails completely, fall back to basic conversation history
+            self.logger.warning(
+                f"Session {self.session_id}: Context optimization failed, using basic history: {str(e)}"
+            )
+            return self.conversation_history.copy()
+    
+    def _restore_context_with_fallback(self, messages: List[Dict[str, str]]) -> bool:
+        """
+        Restore context with fallback support.
+        
+        Args:
+            messages: Messages to restore
+            
+        Returns:
+            bool: True if context was restored successfully
+        """
+        def primary_restore_context(**kwargs):
+            msgs = kwargs["messages"]
+            if not msgs:
+                return True
+            
+            # Apply intelligent message selection for memory restoration
+            selected_messages = self._select_messages_for_restoration(msgs)
+            
+            # Convert database messages to LangChain message objects
+            restored_count = 0
+            for message in selected_messages:
+                langchain_message = self._convert_database_message_to_langchain(message)
+                if langchain_message:
+                    self.conversation_history.append(langchain_message)
+                    restored_count += 1
+            
+            # Apply context optimization after restoration if needed
+            if restored_count > 0:
+                self._optimize_restored_context()
+            
+            return True
+        
+        return self.fallback_manager.execute_with_fallback(
+            primary_restore_context,
+            "restore_context",
+            messages=messages
+        )
+    
     def get_token_usage_details(self) -> Dict[str, Any]:
         """
         Get detailed token usage information for the current conversation.
@@ -517,3 +640,54 @@ class LangChainChatSession:
             f"({len(self.conversation_history)} -> {len(optimized_context)} messages)"
         )
         return optimized_context
+    
+    def get_fallback_status(self) -> Dict[str, Any]:
+        """
+        Get current fallback status and statistics.
+        
+        Returns:
+            Dictionary with fallback status information
+        """
+        return self.fallback_manager.get_fallback_status()
+    
+    def get_fallback_history(self) -> List[Dict[str, Any]]:
+        """
+        Get detailed fallback history for this session.
+        
+        Returns:
+            List of fallback events with details
+        """
+        return self.fallback_manager.get_fallback_history()
+    
+    def is_in_fallback_mode(self) -> bool:
+        """
+        Check if the session is currently in fallback mode.
+        
+        Returns:
+            bool: True if in fallback mode
+        """
+        return self.fallback_manager.is_in_fallback_mode()
+    
+    def reset_fallback_state(self) -> None:
+        """Reset fallback state for this session."""
+        self.fallback_manager.reset_fallback_manager()
+        self.logger.info(f"Session {self.session_id}: Fallback state reset")
+    
+    def get_memory_health_status(self) -> Dict[str, Any]:
+        """
+        Get comprehensive memory health status including fallback information.
+        
+        Returns:
+            Dictionary with memory health status
+        """
+        fallback_status = self.get_fallback_status()
+        optimization_stats = self.get_optimization_stats()
+        
+        return {
+            "session_id": self.session_id,
+            "conversation_length": len(self.conversation_history),
+            "memory_health": "degraded" if self.is_in_fallback_mode() else "healthy",
+            "fallback_status": fallback_status,
+            "optimization_stats": optimization_stats,
+            "last_optimization_successful": not self.is_in_fallback_mode()
+        }

@@ -14,28 +14,16 @@ from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AI
 from langchain_core.exceptions import LangChainException
 
 from backend.utils.logging_config import get_logger
-from backend.exceptions import AIServiceError, ConfigurationError
+from backend.exceptions import (
+    AIServiceError, 
+    ConfigurationError,
+    LangChainError,
+    ModelInitializationError,
+    LangChainMemoryError,
+    LangChainExceptionMapper,
+    handle_langchain_exception
+)
 from backend.config.system_instructions import get_system_instruction, list_available_instructions
-
-
-class LangChainError(Exception):
-    """Base exception for LangChain operations"""
-    pass
-
-
-class MemoryError(LangChainError):
-    """Memory management operation failures"""
-    pass
-
-
-class ContextOptimizationError(LangChainError):
-    """Context optimization failures"""
-    pass
-
-
-class ModelInitializationError(LangChainError):
-    """LangChain model initialization failures"""
-    pass
 
 
 class LangChainClient:
@@ -86,7 +74,20 @@ class LangChainClient:
                 convert_system_message_to_human=True  # Handle system messages properly
             )
         except Exception as e:
-            raise ModelInitializationError(f"Failed to initialize ChatGoogleGenerativeAI: {str(e)}")
+            mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                e,
+                "Failed to initialize ChatGoogleGenerativeAI",
+                additional_context={"model": self.model, "api_key_present": bool(api_key)}
+            )
+            if isinstance(mapped_error, ModelInitializationError):
+                raise mapped_error
+            else:
+                raise ModelInitializationError(
+                    f"Failed to initialize ChatGoogleGenerativeAI: {str(e)}",
+                    e,
+                    model_name=self.model,
+                    api_key_present=bool(api_key)
+                )
         
         # Session cache: session_id -> LangChainChatSession
         self.active_sessions: Dict[int, "LangChainChatSession"] = {}
@@ -163,9 +164,19 @@ class LangChainClient:
             return chat_session
             
         except LangChainException as e:
-            raise AIServiceError(f"LangChain error: {str(e)}", e)
+            mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                e,
+                f"Failed to create LangChain session for session {session_id}",
+                session_id=session_id
+            )
+            raise mapped_error
         except Exception as e:
-            raise AIServiceError(f"Failed to create chat session for session {session_id}: {str(e)}", e)
+            mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                e,
+                f"Failed to create chat session for session {session_id}",
+                session_id=session_id
+            )
+            raise mapped_error
     
     def remove_session(self, session_id: int) -> bool:
         """
@@ -228,7 +239,11 @@ class LangChainClient:
                 context_optimizer=context_optimizer
             )
         except Exception as e:
-            raise AIServiceError(f"Failed to create standalone chat session: {str(e)}", e)
+            mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                e,
+                "Failed to create standalone chat session"
+            )
+            raise mapped_error
     
     def _cleanup_if_needed(self) -> None:
         """

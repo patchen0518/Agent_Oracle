@@ -25,7 +25,10 @@ from backend.exceptions import (
     ValidationError,
     NotFoundError,
     AIServiceError,
-    DatabaseError
+    DatabaseError,
+    LangChainError,
+    SessionMemoryError,
+    LangChainExceptionMapper
 )
 
 
@@ -114,21 +117,56 @@ class SessionChatService:
             # 5. Send message to LangChain session with hybrid persistence handling
             ai_response = None
             memory_operation_failed = False
+            fallback_used = False
             
             try:
                 ai_response = chat_session.send_message(message.strip())
-            except Exception as e:
+                
+                # Check if session is in fallback mode after the operation
+                if chat_session.is_in_fallback_mode():
+                    fallback_used = True
+                    self.logger.info(
+                        f"Session {session_id}: Message processed using fallback mechanisms. "
+                        f"Fallback status: {chat_session.get_fallback_status()}"
+                    )
+                
+            except (LangChainError, SessionMemoryError) as e:
                 memory_operation_failed = True
                 self.logger.warning(
                     f"LangChain memory operation failed for session {session_id}: {str(e)}. "
-                    "Attempting fallback to direct model call."
+                    "Attempting direct model fallback."
                 )
                 
                 # Fallback: try direct model call without memory context
                 try:
                     ai_response = await self._fallback_direct_model_call(message.strip(), session)
+                    fallback_used = True
                 except Exception as fallback_error:
-                    raise AIServiceError(f"Both LangChain and fallback failed: {str(e)} | {str(fallback_error)}", e)
+                    # Create combined error for both failures
+                    combined_error = LangChainExceptionMapper.create_fallback_error(
+                        e, fallback_error, "send_message", session_id
+                    )
+                    raise combined_error
+            except Exception as e:
+                # Handle unexpected errors
+                memory_operation_failed = True
+                mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                    e,
+                    f"Unexpected error sending message for session {session_id}",
+                    session_id=session_id
+                )
+                
+                self.logger.warning(f"Unexpected error, attempting fallback: {str(mapped_error)}")
+                
+                # Try fallback
+                try:
+                    ai_response = await self._fallback_direct_model_call(message.strip(), session)
+                    fallback_used = True
+                except Exception as fallback_error:
+                    combined_error = LangChainExceptionMapper.create_fallback_error(
+                        mapped_error, fallback_error, "send_message", session_id
+                    )
+                    raise combined_error
             
             # 6. Store assistant response in database (guaranteed persistence)
             assistant_message_data = MessageCreate(
@@ -138,7 +176,9 @@ class SessionChatService:
                 message_metadata={
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "model_used": session.model_used,
-                    "memory_operation_failed": memory_operation_failed
+                    "memory_operation_failed": memory_operation_failed,
+                    "fallback_used": fallback_used,
+                    "fallback_status": chat_session.get_fallback_status() if not memory_operation_failed else None
                 }
             )
             assistant_message = await self.session_service.add_message(assistant_message_data)
@@ -438,3 +478,82 @@ class SessionChatService:
         except Exception as e:
             self.logger.error(f"Failed to get hybrid session stats for {session_id}: {str(e)}")
             return {"session_id": session_id, "error": str(e)}
+    
+    async def get_session_fallback_status(self, session_id: int) -> Dict[str, Any]:
+        """
+        Get comprehensive fallback status for a session.
+        
+        Args:
+            session_id: The session ID to get fallback status for
+            
+        Returns:
+            Dictionary containing fallback status and health information
+        """
+        try:
+            # Check if session exists
+            session = await self.session_service.get_session(session_id)
+            if not session:
+                return {"session_id": session_id, "error": "Session not found"}
+            
+            # Get active chat session
+            chat_session = self.langchain_client.active_sessions.get(session_id)
+            if not chat_session:
+                return {
+                    "session_id": session_id,
+                    "active": False,
+                    "fallback_status": "no_active_session"
+                }
+            
+            # Get comprehensive memory health status
+            memory_health = chat_session.get_memory_health_status()
+            fallback_history = chat_session.get_fallback_history()
+            
+            return {
+                "session_id": session_id,
+                "active": True,
+                "memory_health": memory_health,
+                "fallback_history": fallback_history,
+                "recommendations": self._get_fallback_recommendations(memory_health, fallback_history)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get fallback status for session {session_id}: {str(e)}")
+            return {"session_id": session_id, "error": str(e)}
+    
+    def _get_fallback_recommendations(
+        self, 
+        memory_health: Dict[str, Any], 
+        fallback_history: List[Dict[str, Any]]
+    ) -> List[str]:
+        """
+        Generate recommendations based on fallback status.
+        
+        Args:
+            memory_health: Memory health status
+            fallback_history: Fallback history
+            
+        Returns:
+            List of recommendations
+        """
+        recommendations = []
+        
+        if memory_health.get("memory_health") == "degraded":
+            recommendations.append("Session is in fallback mode - consider restarting session")
+        
+        if len(fallback_history) > 5:
+            recommendations.append("Frequent fallbacks detected - check system resources")
+        
+        fallback_status = memory_health.get("fallback_status", {})
+        current_level = fallback_status.get("current_fallback_level", "none")
+        
+        if current_level == "no_memory":
+            recommendations.append("Session has no memory - restart recommended for full functionality")
+        elif current_level == "basic_context":
+            recommendations.append("Session using basic context only - limited conversation continuity")
+        elif current_level == "simple_buffer":
+            recommendations.append("Session using simple buffer - reduced memory capabilities")
+        
+        if not recommendations:
+            recommendations.append("Session memory is healthy")
+        
+        return recommendations
