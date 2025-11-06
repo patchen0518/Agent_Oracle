@@ -39,8 +39,8 @@ async def lifespan(app: FastAPI):
         raise
     
     # Check required environment variables
-    if not os.getenv("GEMINI_API_KEY"):
-        logger.warning("GEMINI_API_KEY not set - chat functionality will be unavailable")
+    if not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
+        logger.warning("GEMINI_API_KEY or GOOGLE_API_KEY not set - chat functionality will be unavailable")
     
     yield
     
@@ -125,14 +125,14 @@ async def global_exception_handler(request: Request, exc: Exception):
 async def health_check():
     """Enhanced health check with service status."""
     try:
-        # Check if Gemini API key is configured
-        gemini_status = "configured" if os.getenv("GEMINI_API_KEY") else "not_configured"
+        # Check if Google API key is configured
+        api_status = "configured" if (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")) else "not_configured"
         
         health_info = {
             "status": "healthy",
             "timestamp": "2025-01-27T00:00:00Z",  # Would use actual timestamp
             "services": {
-                "gemini_api": gemini_status,
+                "langchain_api": api_status,
                 "logging": "active"
             },
             "version": "1.1.0"

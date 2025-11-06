@@ -15,7 +15,7 @@ import os
 from backend.config.database import get_session
 from backend.services.session_service import SessionService
 from backend.services.session_chat_service import SessionChatService
-from backend.services.gemini_client import GeminiClient
+from backend.services.langchain_client import LangChainClient
 from backend.models.session_models import (
     SessionCreate,
     SessionUpdate,
@@ -66,19 +66,19 @@ def get_session_chat_service(db: Session = Depends(get_session)) -> SessionChatS
         SessionChatService: Configured session chat service instance
         
     Raises:
-        HTTPException: If Gemini API key is not configured
+        HTTPException: If Google API key is not configured
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        logger.error("Gemini API key not configured")
+        logger.error("Google API key not configured")
         raise HTTPException(
             status_code=500,
             detail="AI service not configured - please contact administrator"
         )
     
     try:
-        gemini_client = GeminiClient(api_key=api_key)
-        return SessionChatService(db, gemini_client)
+        langchain_client = LangChainClient(api_key=api_key)
+        return SessionChatService(db, langchain_client)
     except ConfigurationError as e:
         logger.error(f"Configuration error: {e.message}")
         raise HTTPException(

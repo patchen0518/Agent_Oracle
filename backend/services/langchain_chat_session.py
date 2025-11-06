@@ -197,7 +197,10 @@ class LangChainChatSession:
     
     def restore_context(self, messages: List[Dict[str, str]]) -> None:
         """
-        Restore conversation context from message dictionaries.
+        Restore conversation context from database message dictionaries.
+        
+        Efficiently converts database message format to LangChain message objects
+        with intelligent context selection and memory optimization.
         
         Args:
             messages: List of message dictionaries with 'role' and 'content' keys
@@ -205,30 +208,144 @@ class LangChainChatSession:
         """
         try:
             if not messages:
+                self.logger.debug(f"Session {self.session_id}: No messages to restore")
                 return
             
-            # Limit to recent messages for performance (last 20 messages)
-            recent_messages = messages[-20:] if len(messages) > 20 else messages
+            # Apply intelligent message selection for memory restoration
+            selected_messages = self._select_messages_for_restoration(messages)
             
-            # Convert dictionary messages to LangChain message objects
-            for message in recent_messages:
-                role = message.get("role", "").lower()
-                content = message.get("content", "")
-                
-                if not content:
-                    continue
-                
-                if role == "user":
-                    self.conversation_history.append(HumanMessage(content=content))
-                elif role == "assistant":
-                    self.conversation_history.append(AIMessage(content=content))
-                # Skip system messages as they should be handled at session creation
+            # Convert database messages to LangChain message objects
+            restored_count = 0
+            for message in selected_messages:
+                langchain_message = self._convert_database_message_to_langchain(message)
+                if langchain_message:
+                    self.conversation_history.append(langchain_message)
+                    restored_count += 1
             
-            self.logger.info(f"Session {self.session_id}: Restored {len(recent_messages)} messages to context")
+            # Apply context optimization after restoration if needed
+            if restored_count > 0:
+                self._optimize_restored_context()
+            
+            self.logger.info(
+                f"Session {self.session_id}: Restored {restored_count} messages from {len(messages)} "
+                f"database messages to context (final context: {len(self.conversation_history)} messages)"
+            )
             
         except Exception as e:
             self.logger.warning(f"Failed to restore context for session {self.session_id}: {str(e)}")
             # Continue without restored context - session will still work
+    
+    def _select_messages_for_restoration(self, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """
+        Intelligently select messages for context restoration.
+        
+        Uses context optimizer to determine which messages are most relevant
+        for restoration while maintaining conversation continuity.
+        
+        Args:
+            messages: All available database messages
+            
+        Returns:
+            List of selected messages for restoration
+        """
+        if not messages:
+            return []
+        
+        # For initial implementation, use recent messages with smart limits
+        # This can be enhanced with semantic relevance scoring later
+        
+        # Get context optimizer limits
+        max_messages = self.context_optimizer.config.messages_to_keep_after_summary
+        max_tokens = self.context_optimizer.config.max_tokens_before_summary
+        
+        # Start with recent messages and work backwards
+        selected_messages = []
+        estimated_tokens = 0
+        
+        for message in reversed(messages):
+            # Estimate token usage for this message
+            content = message.get("content", "")
+            message_tokens = self.context_optimizer.calculate_token_usage([
+                self._convert_database_message_to_langchain(message)
+            ]) if content else 0
+            
+            # Check if adding this message would exceed limits
+            if (len(selected_messages) >= max_messages or 
+                estimated_tokens + message_tokens > max_tokens * 0.8):  # Leave 20% buffer
+                break
+            
+            selected_messages.insert(0, message)  # Insert at beginning to maintain order
+            estimated_tokens += message_tokens
+        
+        self.logger.debug(
+            f"Session {self.session_id}: Selected {len(selected_messages)} messages "
+            f"from {len(messages)} for restoration (estimated tokens: {estimated_tokens})"
+        )
+        
+        return selected_messages
+    
+    def _convert_database_message_to_langchain(self, message: Dict[str, str]) -> Optional[BaseMessage]:
+        """
+        Convert a database message dictionary to a LangChain message object.
+        
+        Args:
+            message: Database message dictionary with 'role' and 'content' keys
+            
+        Returns:
+            LangChain message object or None if conversion fails
+        """
+        try:
+            role = message.get("role", "").lower().strip()
+            content = message.get("content", "").strip()
+            
+            if not content:
+                return None
+            
+            # Convert based on role
+            if role == "user":
+                return HumanMessage(content=content)
+            elif role == "assistant":
+                return AIMessage(content=content)
+            elif role == "system":
+                # System messages should be handled at session creation, but include for completeness
+                return SystemMessage(content=content)
+            else:
+                self.logger.warning(f"Session {self.session_id}: Unknown message role '{role}', skipping")
+                return None
+                
+        except Exception as e:
+            self.logger.warning(f"Session {self.session_id}: Failed to convert message: {str(e)}")
+            return None
+    
+    def _optimize_restored_context(self) -> None:
+        """
+        Apply context optimization after restoring messages from database.
+        
+        Ensures the restored context is within optimal limits and applies
+        summarization if needed.
+        """
+        try:
+            # Check if optimization is needed
+            if self.context_optimizer.should_optimize_context(self.conversation_history):
+                original_count = len(self.conversation_history)
+                
+                # Apply optimization through summarization middleware
+                optimized_context = self.summarization_middleware.process_messages(self.conversation_history)
+                
+                # Update conversation history with optimized context
+                # Keep system messages and replace the rest
+                system_messages = [msg for msg in self.conversation_history if isinstance(msg, SystemMessage)]
+                non_system_optimized = [msg for msg in optimized_context if not isinstance(msg, SystemMessage)]
+                
+                self.conversation_history = system_messages + non_system_optimized
+                
+                self.logger.info(
+                    f"Session {self.session_id}: Optimized restored context "
+                    f"({original_count} -> {len(self.conversation_history)} messages)"
+                )
+        except Exception as e:
+            self.logger.warning(f"Session {self.session_id}: Failed to optimize restored context: {str(e)}")
+            # Continue with unoptimized context
     
     def _process_system_instruction(self, system_instruction: str) -> None:
         """

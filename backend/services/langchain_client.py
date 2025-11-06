@@ -304,3 +304,89 @@ class LangChainClient:
             Dict[str, str]: Mapping of instruction type to description
         """
         return list_available_instructions()
+    
+    def sync_session_with_database(self, session_id: int, recent_messages: List[Dict[str, str]]) -> bool:
+        """
+        Synchronize a session's memory with database state.
+        
+        This method ensures that the LangChain memory state is consistent
+        with the database persistence layer.
+        
+        Args:
+            session_id: The session ID to synchronize
+            recent_messages: Recent messages from database to restore
+            
+        Returns:
+            bool: True if synchronization was successful
+        """
+        try:
+            chat_session = self.active_sessions.get(session_id)
+            if not chat_session:
+                self.logger.debug(f"No active session {session_id} to synchronize")
+                return True
+            
+            # Clear existing memory and restore from database
+            chat_session.clear_history()
+            
+            # Restore system instruction if needed
+            if chat_session.has_system_instruction():
+                current_instruction = chat_session.get_system_instruction()
+                if current_instruction:
+                    chat_session._process_system_instruction(current_instruction)
+            
+            # Restore context from database messages
+            if recent_messages:
+                chat_session.restore_context(recent_messages)
+            
+            self.logger.info(f"Successfully synchronized session {session_id} with database")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to synchronize session {session_id} with database: {str(e)}")
+            return False
+    
+    def get_memory_database_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about memory-database coordination across all sessions.
+        
+        Returns:
+            Dictionary containing hybrid persistence statistics
+        """
+        stats = {
+            "total_active_sessions": len(self.active_sessions),
+            "sessions_with_memory": 0,
+            "sessions_with_optimization": 0,
+            "total_memory_messages": 0,
+            "optimization_stats": {}
+        }
+        
+        try:
+            for session_id, chat_session in self.active_sessions.items():
+                if chat_session.get_message_count() > 0:
+                    stats["sessions_with_memory"] += 1
+                    stats["total_memory_messages"] += chat_session.get_message_count()
+                
+                # Check if session has optimization stats
+                if hasattr(chat_session, 'get_optimization_stats'):
+                    try:
+                        session_stats = chat_session.get_optimization_stats()
+                        stats["sessions_with_optimization"] += 1
+                        
+                        # Aggregate optimization stats
+                        if "total_optimizations" not in stats["optimization_stats"]:
+                            stats["optimization_stats"]["total_optimizations"] = 0
+                            stats["optimization_stats"]["total_tokens_saved"] = 0
+                        
+                        optimizer_stats = session_stats.get("optimizer", {})
+                        stats["optimization_stats"]["total_optimizations"] += optimizer_stats.get("optimizations_performed", 0)
+                        stats["optimization_stats"]["total_tokens_saved"] += optimizer_stats.get("tokens_saved", 0)
+                        
+                    except Exception as e:
+                        self.logger.debug(f"Failed to get optimization stats for session {session_id}: {str(e)}")
+            
+            return stats
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get memory-database stats: {str(e)}")
+            stats["error"] = str(e)
+            return stats
