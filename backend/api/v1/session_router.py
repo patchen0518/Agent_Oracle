@@ -27,6 +27,13 @@ from backend.models.session_models import (
 from backend.models.error_models import ErrorResponse, ServiceErrorResponse
 from backend.utils.logging_config import get_logger, log_error_context
 from backend.api.v1.monitoring_router import track_session_operation
+from backend.exceptions import (
+    ValidationError,
+    NotFoundError,
+    DatabaseError,
+    AIServiceError,
+    ConfigurationError
+)
 
 # Create the router
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
@@ -72,6 +79,12 @@ def get_session_chat_service(db: Session = Depends(get_session)) -> SessionChatS
     try:
         gemini_client = GeminiClient(api_key=api_key)
         return SessionChatService(db, gemini_client)
+    except ConfigurationError as e:
+        logger.error(f"Configuration error: {e.message}")
+        raise HTTPException(
+            status_code=500,
+            detail="AI service configuration error"
+        )
     except Exception as e:
         logger.error(f"Failed to initialize session chat service: {e}")
         raise HTTPException(
@@ -131,11 +144,18 @@ async def create_session(
         
         return session
         
-    except ValueError as e:
-        logger.warning(f"Invalid session data: {e}", extra=request_context)
+    except ValidationError as e:
+        logger.warning(f"Invalid session data: {e.message}", extra=request_context)
         raise HTTPException(
             status_code=400,
-            detail=str(e)
+            detail=e.message
+        )
+        
+    except DatabaseError as e:
+        log_error_context(logger, e, request_context)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create session"
         )
         
     except Exception as e:
@@ -198,11 +218,18 @@ async def list_sessions(
         
         return sessions
         
-    except ValueError as e:
-        logger.warning(f"Invalid query parameters: {e}", extra=request_context)
+    except ValidationError as e:
+        logger.warning(f"Invalid query parameters: {e.message}", extra=request_context)
         raise HTTPException(
             status_code=400,
-            detail=str(e)
+            detail=e.message
+        )
+        
+    except DatabaseError as e:
+        log_error_context(logger, e, request_context)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to list sessions"
         )
         
     except Exception as e:
@@ -269,11 +296,18 @@ async def get_session(
     except HTTPException:
         raise
         
-    except ValueError as e:
-        logger.warning(f"Invalid session ID: {e}", extra=request_context)
+    except ValidationError as e:
+        logger.warning(f"Invalid session ID: {e.message}", extra=request_context)
         raise HTTPException(
             status_code=400,
-            detail=str(e)
+            detail=e.message
+        )
+        
+    except DatabaseError as e:
+        log_error_context(logger, e, request_context)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve session"
         )
         
     except Exception as e:
@@ -335,11 +369,18 @@ async def update_session(
     except HTTPException:
         raise
         
-    except ValueError as e:
-        logger.warning(f"Invalid update data: {e}", extra=request_context)
+    except ValidationError as e:
+        logger.warning(f"Invalid update data: {e.message}", extra=request_context)
         raise HTTPException(
             status_code=400,
-            detail=str(e)
+            detail=e.message
+        )
+        
+    except DatabaseError as e:
+        log_error_context(logger, e, request_context)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update session"
         )
         
     except Exception as e:
@@ -395,11 +436,18 @@ async def delete_session(
     except HTTPException:
         raise
         
-    except ValueError as e:
-        logger.warning(f"Invalid session ID: {e}", extra=request_context)
+    except ValidationError as e:
+        logger.warning(f"Invalid session ID: {e.message}", extra=request_context)
         raise HTTPException(
             status_code=400,
-            detail=str(e)
+            detail=e.message
+        )
+        
+    except DatabaseError as e:
+        log_error_context(logger, e, request_context)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete session"
         )
         
     except Exception as e:
@@ -472,57 +520,56 @@ async def send_message(
         
         return response
         
-    except ValueError as e:
-        logger.warning(f"Invalid chat request: {e}", extra=request_context)
+    except ValidationError as e:
+        logger.warning(f"Invalid chat request: {e.message}", extra=request_context)
         raise HTTPException(
-            status_code=400 if "not found" not in str(e).lower() else 404,
-            detail=str(e)
+            status_code=400,
+            detail=e.message
+        )
+        
+    except NotFoundError as e:
+        logger.warning(f"Session not found: {e.message}", extra=request_context)
+        raise HTTPException(
+            status_code=404,
+            detail=e.message
+        )
+        
+    except AIServiceError as e:
+        error_context = {**request_context, "ai_service_error": str(e)}
+        log_error_context(logger, e, error_context)
+        
+        # Handle specific AI service errors
+        if e.original_error and hasattr(e.original_error, 'code'):
+            if e.original_error.code == 401:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Authentication with AI service failed"
+                )
+            elif e.original_error.code == 429:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Rate limit exceeded. Please wait before trying again."
+                )
+            elif e.original_error.code == 503:
+                raise HTTPException(
+                    status_code=503,
+                    detail="AI service is temporarily unavailable. Please try again in a few minutes."
+                )
+        
+        # Generic AI service error
+        raise HTTPException(
+            status_code=502,
+            detail="AI service is experiencing issues. Please try again later."
+        )
+        
+    except DatabaseError as e:
+        log_error_context(logger, e, request_context)
+        raise HTTPException(
+            status_code=500,
+            detail="Database error occurred while processing your message"
         )
         
     except Exception as e:
-        # Handle Gemini API errors similar to the original chat router
-        from google.genai import errors
-        
-        if isinstance(e, errors.APIError):
-            error_context = {**request_context, "gemini_error": str(e)}
-            log_error_context(logger, e, error_context)
-            
-            # Map Gemini API errors to appropriate HTTP status codes
-            if hasattr(e, 'code'):
-                if e.code == 401:
-                    raise HTTPException(
-                        status_code=401,
-                        detail="Authentication with AI service failed"
-                    )
-                elif e.code == 403:
-                    raise HTTPException(
-                        status_code=403,
-                        detail="Access to AI service denied"
-                    )
-                elif e.code == 429:
-                    retry_after = getattr(e, 'retry_after', 60)
-                    raise HTTPException(
-                        status_code=429,
-                        detail=f"Rate limit exceeded. Please wait {retry_after} seconds before trying again.",
-                        headers={"Retry-After": str(retry_after)}
-                    )
-                elif e.code == 400:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Invalid request to AI service - please check your message format"
-                    )
-                elif e.code == 503:
-                    raise HTTPException(
-                        status_code=503,
-                        detail="AI service is temporarily unavailable. Please try again in a few minutes."
-                    )
-            
-            # Generic API error
-            raise HTTPException(
-                status_code=502,
-                detail="AI service is experiencing issues. Please try again later."
-            )
-        
         # Unexpected server error
         log_error_context(logger, e, request_context)
         
@@ -596,20 +643,26 @@ async def get_session_messages(
         
         return messages
         
-    except ValueError as e:
-        error_msg = str(e)
-        if "not found" in error_msg.lower():
-            logger.warning("Session not found for message retrieval", extra=request_context)
-            raise HTTPException(
-                status_code=404,
-                detail=error_msg
-            )
-        else:
-            logger.warning(f"Invalid query parameters: {e}", extra=request_context)
-            raise HTTPException(
-                status_code=400,
-                detail=error_msg
-            )
+    except ValidationError as e:
+        logger.warning(f"Invalid query parameters: {e.message}", extra=request_context)
+        raise HTTPException(
+            status_code=400,
+            detail=e.message
+        )
+        
+    except NotFoundError as e:
+        logger.warning("Session not found for message retrieval", extra=request_context)
+        raise HTTPException(
+            status_code=404,
+            detail=e.message
+        )
+        
+    except DatabaseError as e:
+        log_error_context(logger, e, request_context)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve session messages"
+        )
         
     except Exception as e:
         log_error_context(logger, e, request_context)

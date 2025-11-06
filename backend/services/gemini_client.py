@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from google import genai
 from google.genai import errors, types
 from backend.utils.logging_config import get_logger
+from backend.exceptions import AIServiceError, ConfigurationError
 
 
 class GeminiClient:
@@ -44,7 +45,7 @@ class GeminiClient:
             api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         
         if not api_key:
-            raise ValueError(
+            raise ConfigurationError(
                 "Gemini API key is required. Set GEMINI_API_KEY environment variable "
                 "or pass api_key parameter."
             )
@@ -53,15 +54,15 @@ class GeminiClient:
         try:
             self.client = genai.Client(api_key=api_key)
         except Exception as e:
-            raise ValueError(f"Failed to initialize Gemini client: {str(e)}")
+            raise ConfigurationError(f"Failed to initialize Gemini client: {str(e)}")
         
-        # Simple session cache: session_id -> ChatSession
+        # Simplified session cache: session_id -> ChatSession
         # Each ChatSession maintains its own conversation history via Gemini SDK
         self.active_sessions: Dict[int, "ChatSession"] = {}
         
-        # Session management configuration
-        self.session_timeout: int = int(os.getenv("SESSION_TIMEOUT", "3600"))  # 1 hour default
-        self.max_sessions: int = int(os.getenv("MAX_SESSIONS", "100"))  # Reduced default
+        # Simplified session management configuration
+        self.session_timeout: int = 3600  # 1 hour
+        self.max_sessions: int = 50  # Reduced from 100 for better memory management
         self.last_cleanup: datetime = datetime.now()
         
         # Simple statistics
@@ -71,23 +72,23 @@ class GeminiClient:
         # Initialize logger
         self.logger = get_logger("gemini_client")
     
-    def get_or_create_session(self, session_id: int, system_instruction: Optional[str] = None, conversation_history: Optional[list] = None) -> "ChatSession":
+    def get_or_create_session(self, session_id: int, system_instruction: Optional[str] = None, recent_messages: Optional[list] = None) -> "ChatSession":
         """
-        Get existing Gemini chat session or create a new one with conversation history restoration.
+        Get existing Gemini chat session or create a new one with recent message context.
         
-        Leverages Gemini's native conversation management and restores conversation history
-        from the database when creating new sessions to maintain memory across restarts.
+        Optimized approach that uses only recent messages for context restoration,
+        reducing memory usage and improving performance.
         
         Args:
             session_id: The session ID to retrieve or create
             system_instruction: Optional system instruction for new sessions
-            conversation_history: Optional list of previous messages to restore context
+            recent_messages: Optional list of recent messages to restore context (max 10)
             
         Returns:
-            ChatSession: The cached or newly created chat session with restored history
+            ChatSession: The cached or newly created chat session with restored context
             
         Raises:
-            errors.APIError: If session creation fails
+            AIServiceError: If session creation fails
         """
         # Periodic cleanup
         self._cleanup_if_needed()
@@ -114,10 +115,10 @@ class GeminiClient:
             
             chat_session = ChatSession(chat)
             
-            # Restore conversation history if provided
-            if conversation_history:
-                chat_session.restore_conversation_history(conversation_history)
-                self.logger.info(f"Restored {len(conversation_history)} messages for session_id {session_id}")
+            # Restore recent conversation context if provided (optimized)
+            if recent_messages:
+                chat_session.restore_recent_context(recent_messages)
+                self.logger.info(f"Restored {len(recent_messages)} recent messages for session_id {session_id}")
             
             self.active_sessions[session_id] = chat_session
             self.sessions_created += 1
@@ -126,9 +127,9 @@ class GeminiClient:
             return chat_session
             
         except errors.APIError as e:
-            raise self._handle_api_error(e)
+            raise AIServiceError(f"Gemini API error: {self._handle_api_error(e).message}", e)
         except Exception as e:
-            raise errors.APIError(f"Failed to create chat session for session {session_id}: {str(e)}")
+            raise AIServiceError(f"Failed to create chat session for session {session_id}: {str(e)}", e)
     
     def remove_session(self, session_id: int) -> bool:
         """
@@ -223,9 +224,9 @@ class GeminiClient:
             return ChatSession(chat)
             
         except errors.APIError as e:
-            raise self._handle_api_error(e)
+            raise AIServiceError(f"Gemini API error: {self._handle_api_error(e).message}", e)
         except Exception as e:
-            raise errors.APIError(f"Failed to create chat session: {str(e)}")
+            raise AIServiceError(f"Failed to create chat session: {str(e)}", e)
     
 
     
@@ -348,26 +349,30 @@ class ChatSession:
             # Return empty history if retrieval fails
             return []
     
-    def restore_conversation_history(self, messages: List[dict]) -> None:
+    def restore_recent_context(self, messages: List[dict]) -> None:
         """
-        Restore conversation history to the Gemini chat session.
+        Restore recent conversation context to the Gemini chat session.
         
-        This method uses Gemini's history initialization to restore previous conversation
-        context without actually sending new messages, ensuring efficient memory restoration.
+        Optimized method that restores only recent context (last 10 messages max)
+        for efficient memory usage and faster session initialization.
         
         Args:
-            messages: List of message dictionaries with 'role' and 'content' keys
+            messages: List of recent message dictionaries with 'role' and 'content' keys
                      Expected format: [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
+                     Should be limited to 10 messages or fewer for optimal performance
         """
         try:
-            if not messages:
+            if not messages or len(messages) == 0:
                 return
+            
+            # Limit to last 10 messages for performance
+            recent_messages = messages[-10:] if len(messages) > 10 else messages
             
             # Convert messages to Gemini's expected format
             from google.genai.types import Content, Part
             
             history = []
-            for message in messages:
+            for message in recent_messages:
                 # Create content object for each message
                 content = Content(
                     role=message["role"],
@@ -376,31 +381,29 @@ class ChatSession:
                 history.append(content)
             
             # Use Gemini's history initialization if available
-            # This is more efficient than replaying messages
             if hasattr(self.chat, '_history') and history:
-                # Set the internal history directly
+                # Set the internal history directly (most efficient)
                 self.chat._history = history
             else:
-                # Fallback: replay only the last few messages to establish context
-                # This is more efficient than replaying all messages
-                recent_messages = messages[-4:] if len(messages) > 4 else messages
+                # Fallback: replay only essential context messages
+                # Use every other pair to establish context efficiently
+                context_messages = recent_messages[-4:] if len(recent_messages) > 4 else recent_messages
                 
-                for i in range(0, len(recent_messages), 2):
-                    if (i < len(recent_messages) and 
-                        recent_messages[i]["role"] == "user" and
-                        i + 1 < len(recent_messages) and 
-                        recent_messages[i + 1]["role"] == "assistant"):
+                for i in range(0, len(context_messages), 2):
+                    if (i < len(context_messages) and 
+                        context_messages[i]["role"] == "user" and
+                        i + 1 < len(context_messages) and 
+                        context_messages[i + 1]["role"] == "assistant"):
                         
                         try:
                             # Send user message to establish context
-                            # The response will be different but context is established
-                            self.chat.send_message(recent_messages[i]["content"])
+                            self.chat.send_message(context_messages[i]["content"])
                         except Exception:
                             # Continue if individual message fails
                             continue
             
-        except Exception as e:
-            # If history restoration fails completely, log the error but don't crash
+        except Exception:
+            # If context restoration fails, continue without context
             # The session will still work, just without the restored context
             pass
     

@@ -9,7 +9,7 @@ session management system.
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from sqlmodel import SQLModel, Field, Relationship, JSON, Column
-from sqlalchemy import String, Text
+from sqlalchemy import String, Text, Index
 
 
 # Base models for shared fields and validation
@@ -56,6 +56,12 @@ class Session(SessionBase, table=True):
         cascade_delete=True,
         sa_relationship_kwargs={"lazy": "select"}
     )
+    
+    # Add indexes for common queries
+    __table_args__ = (
+        Index('idx_session_updated_at', 'updated_at'),
+        Index('idx_session_created_at', 'created_at'),
+    )
 
 
 class Message(MessageBase, table=True):
@@ -71,6 +77,13 @@ class Message(MessageBase, table=True):
     
     # Relationship to session
     session: Session = Relationship(back_populates="messages")
+    
+    # Add indexes for common queries
+    __table_args__ = (
+        Index('idx_message_session_id', 'session_id'),
+        Index('idx_message_timestamp', 'timestamp'),
+        Index('idx_message_session_timestamp', 'session_id', 'timestamp'),
+    )
 
 
 # API models for requests and responses

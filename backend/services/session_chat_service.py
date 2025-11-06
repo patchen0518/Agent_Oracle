@@ -20,6 +20,12 @@ from backend.models.session_models import (
 )
 from backend.config.system_instructions import get_system_instruction
 from backend.utils.logging_config import get_logger
+from backend.exceptions import (
+    ValidationError,
+    NotFoundError,
+    AIServiceError,
+    DatabaseError
+)
 
 
 class SessionChatService:
@@ -45,10 +51,10 @@ class SessionChatService:
     
     async def send_message(self, session_id: int, message: str) -> ChatResponse:
         """
-        Send a message within a session context using Gemini's native conversation management.
+        Send a message within a session context using optimized Gemini session management.
         
-        This method leverages Gemini's built-in conversation history instead of
-        manually reconstructing context, making it much simpler and more efficient.
+        This method uses recent message context for efficient session restoration
+        while maintaining conversation continuity.
         
         Args:
             session_id: Unique identifier of the session
@@ -58,41 +64,48 @@ class SessionChatService:
             ChatResponse: Complete response including user message, assistant response, and session info
             
         Raises:
-            ValueError: If session doesn't exist or message is invalid
-            RuntimeError: If database or API operations fail
+            ValidationError: If message is invalid
+            NotFoundError: If session doesn't exist
+            AIServiceError: If AI service operations fail
+            DatabaseError: If database operations fail
         """
         try:
             # 1. Validate session exists
             session = await self.session_service.get_session(session_id)
             if not session:
-                raise ValueError(f"Session {session_id} not found")
+                raise NotFoundError(f"Session {session_id} not found")
             
             # Validate message content
             if not message or not message.strip():
-                raise ValueError("Message content cannot be empty")
+                raise ValidationError("Message content cannot be empty")
             
-            # 2. Get conversation history from database for context restoration
-            existing_messages = await self.session_service.get_session_messages(session_id)
+            # 2. Get only recent messages for context restoration (optimized)
+            recent_messages = await self.session_service.get_recent_messages(session_id, limit=10)
             
             # Convert database messages to format expected by Gemini client
             conversation_history = []
-            for msg in existing_messages:
+            for msg in recent_messages:
                 conversation_history.append({
                     "role": msg.role,
                     "content": msg.content
                 })
             
-            # 3. Get or create Gemini chat session with restored conversation history
+            # 3. Get or create Gemini chat session with recent conversation history
             system_instruction = get_system_instruction()
-            chat_session = self.gemini_client.get_or_create_session(
-                session_id=session_id,
-                system_instruction=system_instruction,
-                conversation_history=conversation_history if conversation_history else None
-            )
+            try:
+                chat_session = self.gemini_client.get_or_create_session(
+                    session_id=session_id,
+                    system_instruction=system_instruction,
+                    recent_messages=conversation_history if conversation_history else None
+                )
+            except Exception as e:
+                raise AIServiceError(f"Failed to create or retrieve chat session: {str(e)}", e)
             
             # 4. Send message directly to Gemini session
-            # Gemini automatically maintains conversation context with restored history!
-            ai_response = chat_session.send_message(message.strip())
+            try:
+                ai_response = chat_session.send_message(message.strip())
+            except Exception as e:
+                raise AIServiceError(f"Failed to get AI response: {str(e)}", e)
             
             # 5. Store user message in database for persistence
             user_message_data = MessageCreate(
@@ -125,8 +138,8 @@ class SessionChatService:
                 session=updated_session
             )
             
-        except ValueError:
+        except (ValidationError, NotFoundError, AIServiceError, DatabaseError):
             raise
         except Exception as e:
-            self.logger.error(f"Failed to send message for session {session_id}: {str(e)}")
-            raise RuntimeError(f"Failed to send message: {str(e)}")
+            self.logger.error(f"Unexpected error sending message for session {session_id}: {str(e)}")
+            raise DatabaseError(f"Failed to send message: {str(e)}")

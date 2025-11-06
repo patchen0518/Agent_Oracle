@@ -7,7 +7,7 @@ retrieval, update, and deletion with proper error handling and validation.
 
 from datetime import datetime, timezone
 from typing import List, Optional
-from sqlmodel import Session, select, desc
+from sqlmodel import Session, select, desc, func
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.models.session_models import (
@@ -18,6 +18,11 @@ from backend.models.session_models import (
     SessionPublic,
     MessagePublic,
     MessageCreate
+)
+from backend.exceptions import (
+    ValidationError,
+    NotFoundError,
+    DatabaseError
 )
 
 
@@ -50,8 +55,8 @@ class SessionService:
             SessionPublic: Created session with generated ID and timestamps
             
         Raises:
-            ValueError: If session data is invalid
-            RuntimeError: If database operation fails
+            ValidationError: If session data is invalid
+            DatabaseError: If database operation fails
         """
         try:
             # Generate title if not provided
@@ -75,10 +80,10 @@ class SessionService:
             
         except SQLAlchemyError as e:
             self.db.rollback()
-            raise RuntimeError(f"Failed to create session: {str(e)}")
+            raise DatabaseError(f"Failed to create session: {str(e)}")
         except Exception as e:
             self.db.rollback()
-            raise ValueError(f"Invalid session data: {str(e)}")
+            raise ValidationError(f"Invalid session data: {str(e)}")
     
     async def get_session(self, session_id: int) -> Optional[SessionPublic]:
         """
@@ -91,12 +96,12 @@ class SessionService:
             SessionPublic: Session data if found, None otherwise
             
         Raises:
-            ValueError: If session_id is invalid
-            RuntimeError: If database operation fails
+            ValidationError: If session_id is invalid
+            DatabaseError: If database operation fails
         """
         try:
             if session_id <= 0:
-                raise ValueError("Session ID must be a positive integer")
+                raise ValidationError("Session ID must be a positive integer")
             
             statement = select(SessionModel).where(SessionModel.id == session_id)
             session = self.db.exec(statement).first()
@@ -106,11 +111,11 @@ class SessionService:
             return None
             
         except SQLAlchemyError as e:
-            raise RuntimeError(f"Failed to retrieve session: {str(e)}")
-        except ValueError:
+            raise DatabaseError(f"Failed to retrieve session: {str(e)}")
+        except ValidationError:
             raise
         except Exception as e:
-            raise RuntimeError(f"Unexpected error retrieving session: {str(e)}")
+            raise DatabaseError(f"Unexpected error retrieving session: {str(e)}")
     
     async def list_sessions(self, limit: int = 50, offset: int = 0) -> List[SessionPublic]:
         """
@@ -124,14 +129,14 @@ class SessionService:
             List[SessionPublic]: List of sessions ordered by updated_at desc
             
         Raises:
-            ValueError: If limit or offset parameters are invalid
-            RuntimeError: If database operation fails
+            ValidationError: If limit or offset parameters are invalid
+            DatabaseError: If database operation fails
         """
         try:
             if limit <= 0 or limit > 100:
-                raise ValueError("Limit must be between 1 and 100")
+                raise ValidationError("Limit must be between 1 and 100")
             if offset < 0:
-                raise ValueError("Offset must be non-negative")
+                raise ValidationError("Offset must be non-negative")
             
             statement = (
                 select(SessionModel)
@@ -144,11 +149,11 @@ class SessionService:
             return [SessionPublic.model_validate(session) for session in sessions]
             
         except SQLAlchemyError as e:
-            raise RuntimeError(f"Failed to list sessions: {str(e)}")
-        except ValueError:
+            raise DatabaseError(f"Failed to list sessions: {str(e)}")
+        except ValidationError:
             raise
         except Exception as e:
-            raise RuntimeError(f"Unexpected error listing sessions: {str(e)}")
+            raise DatabaseError(f"Unexpected error listing sessions: {str(e)}")
     
     async def update_session(self, session_id: int, updates: SessionUpdate) -> Optional[SessionPublic]:
         """
@@ -162,12 +167,12 @@ class SessionService:
             SessionPublic: Updated session data if found, None if session doesn't exist
             
         Raises:
-            ValueError: If session_id or update data is invalid
-            RuntimeError: If database operation fails
+            ValidationError: If session_id or update data is invalid
+            DatabaseError: If database operation fails
         """
         try:
             if session_id <= 0:
-                raise ValueError("Session ID must be a positive integer")
+                raise ValidationError("Session ID must be a positive integer")
             
             # Get existing session
             statement = select(SessionModel).where(SessionModel.id == session_id)
@@ -199,12 +204,12 @@ class SessionService:
             
         except SQLAlchemyError as e:
             self.db.rollback()
-            raise RuntimeError(f"Failed to update session: {str(e)}")
-        except ValueError:
+            raise DatabaseError(f"Failed to update session: {str(e)}")
+        except ValidationError:
             raise
         except Exception as e:
             self.db.rollback()
-            raise RuntimeError(f"Unexpected error updating session: {str(e)}")
+            raise DatabaseError(f"Unexpected error updating session: {str(e)}")
     
     async def delete_session(self, session_id: int) -> bool:
         """
@@ -217,12 +222,12 @@ class SessionService:
             bool: True if session was deleted, False if session didn't exist
             
         Raises:
-            ValueError: If session_id is invalid
-            RuntimeError: If database operation fails
+            ValidationError: If session_id is invalid
+            DatabaseError: If database operation fails
         """
         try:
             if session_id <= 0:
-                raise ValueError("Session ID must be a positive integer")
+                raise ValidationError("Session ID must be a positive integer")
             
             # Get session to delete
             statement = select(SessionModel).where(SessionModel.id == session_id)
@@ -239,12 +244,12 @@ class SessionService:
             
         except SQLAlchemyError as e:
             self.db.rollback()
-            raise RuntimeError(f"Failed to delete session: {str(e)}")
-        except ValueError:
+            raise DatabaseError(f"Failed to delete session: {str(e)}")
+        except ValidationError:
             raise
         except Exception as e:
             self.db.rollback()
-            raise RuntimeError(f"Unexpected error deleting session: {str(e)}")
+            raise DatabaseError(f"Unexpected error deleting session: {str(e)}")
     
     async def get_session_messages(self, session_id: int, limit: int = 100, offset: int = 0) -> List[MessagePublic]:
         """
@@ -259,21 +264,22 @@ class SessionService:
             List[MessagePublic]: List of messages ordered by timestamp asc
             
         Raises:
-            ValueError: If session_id, limit, or offset parameters are invalid
-            RuntimeError: If database operation fails
+            ValidationError: If session_id, limit, or offset parameters are invalid
+            NotFoundError: If session doesn't exist
+            DatabaseError: If database operation fails
         """
         try:
             if session_id <= 0:
-                raise ValueError("Session ID must be a positive integer")
+                raise ValidationError("Session ID must be a positive integer")
             if limit <= 0 or limit > 1000:
-                raise ValueError("Limit must be between 1 and 1000")
+                raise ValidationError("Limit must be between 1 and 1000")
             if offset < 0:
-                raise ValueError("Offset must be non-negative")
+                raise ValidationError("Offset must be non-negative")
             
             # Verify session exists
             session_exists = await self.get_session(session_id)
             if not session_exists:
-                raise ValueError(f"Session {session_id} not found")
+                raise NotFoundError(f"Session {session_id} not found")
             
             # Get messages for the session
             statement = (
@@ -288,15 +294,15 @@ class SessionService:
             return [MessagePublic.model_validate(message) for message in messages]
             
         except SQLAlchemyError as e:
-            raise RuntimeError(f"Failed to retrieve session messages: {str(e)}")
-        except ValueError:
+            raise DatabaseError(f"Failed to retrieve session messages: {str(e)}")
+        except (ValidationError, NotFoundError):
             raise
         except Exception as e:
-            raise RuntimeError(f"Unexpected error retrieving session messages: {str(e)}")
+            raise DatabaseError(f"Unexpected error retrieving session messages: {str(e)}")
     
     async def add_message(self, message_data: MessageCreate) -> MessagePublic:
         """
-        Add a new message to a session with metadata and timestamp management.
+        Add a new message to a session with optimized session updates.
         
         Args:
             message_data: Message creation data including session_id, role, and content
@@ -305,14 +311,17 @@ class SessionService:
             MessagePublic: Created message with generated ID and timestamp
             
         Raises:
-            ValueError: If message data is invalid or session doesn't exist
-            RuntimeError: If database operation fails
+            ValidationError: If message data is invalid
+            NotFoundError: If session doesn't exist
+            DatabaseError: If database operation fails
         """
         try:
-            # Validate session exists
-            session_exists = await self.get_session(message_data.session_id)
-            if not session_exists:
-                raise ValueError(f"Session {message_data.session_id} not found")
+            # Validate session exists and get it in one query
+            session_statement = select(SessionModel).where(SessionModel.id == message_data.session_id)
+            session = self.db.exec(session_statement).first()
+            
+            if not session:
+                raise NotFoundError(f"Session {message_data.session_id} not found")
             
             # Create new message instance
             db_message = MessageModel(
@@ -322,11 +331,13 @@ class SessionService:
                 message_metadata=message_data.message_metadata or {}
             )
             
-            # Add message to database
+            # Add message and update session in single transaction
             self.db.add(db_message)
             
-            # Update session message count and timestamp
-            await self._update_session_after_message(message_data.session_id)
+            # Increment message count directly instead of recounting
+            session.message_count += 1
+            session.updated_at = datetime.now(timezone.utc)
+            self.db.add(session)
             
             self.db.commit()
             self.db.refresh(db_message)
@@ -335,16 +346,16 @@ class SessionService:
             
         except SQLAlchemyError as e:
             self.db.rollback()
-            raise RuntimeError(f"Failed to add message: {str(e)}")
-        except ValueError:
+            raise DatabaseError(f"Failed to add message: {str(e)}")
+        except (ValidationError, NotFoundError):
             raise
         except Exception as e:
             self.db.rollback()
-            raise RuntimeError(f"Unexpected error adding message: {str(e)}")
+            raise DatabaseError(f"Unexpected error adding message: {str(e)}")
     
     async def get_message_count(self, session_id: int) -> int:
         """
-        Get the total number of messages in a session.
+        Get the total number of messages in a session efficiently using SQL COUNT.
         
         Args:
             session_id: Unique identifier of the session
@@ -353,51 +364,69 @@ class SessionService:
             int: Total number of messages in the session
             
         Raises:
-            ValueError: If session_id is invalid
-            RuntimeError: If database operation fails
+            ValidationError: If session_id is invalid
+            DatabaseError: If database operation fails
         """
         try:
             if session_id <= 0:
-                raise ValueError("Session ID must be a positive integer")
+                raise ValidationError("Session ID must be a positive integer")
             
-            statement = select(MessageModel).where(MessageModel.session_id == session_id)
-            messages = self.db.exec(statement).all()
-            return len(messages)
+            statement = select(func.count(MessageModel.id)).where(MessageModel.session_id == session_id)
+            count = self.db.exec(statement).one()
+            return count or 0
             
         except SQLAlchemyError as e:
-            raise RuntimeError(f"Failed to count messages: {str(e)}")
-        except ValueError:
+            raise DatabaseError(f"Failed to count messages: {str(e)}")
+        except ValidationError:
             raise
         except Exception as e:
-            raise RuntimeError(f"Unexpected error counting messages: {str(e)}")
+            raise DatabaseError(f"Unexpected error counting messages: {str(e)}")
     
-    async def _update_session_after_message(self, session_id: int) -> None:
+    async def get_recent_messages(self, session_id: int, limit: int = 10) -> List[MessagePublic]:
         """
-        Update session metadata after adding a message.
+        Get recent messages efficiently for context restoration.
         
-        This method updates the message count and updated_at timestamp
-        for the session after a new message is added.
+        This method is optimized for session context restoration by retrieving
+        only the most recent messages in chronological order.
         
         Args:
-            session_id: Unique identifier of the session to update
+            session_id: Unique identifier of the session
+            limit: Maximum number of recent messages to return (default: 10)
+            
+        Returns:
+            List[MessagePublic]: List of recent messages ordered by timestamp asc
             
         Raises:
-            RuntimeError: If database operation fails
+            ValidationError: If session_id or limit is invalid
+            DatabaseError: If database operation fails
         """
         try:
-            statement = select(SessionModel).where(SessionModel.id == session_id)
-            session = self.db.exec(statement).first()
+            if session_id <= 0:
+                raise ValidationError("Session ID must be a positive integer")
+            if limit <= 0 or limit > 100:
+                raise ValidationError("Limit must be between 1 and 100")
             
-            if session:
-                # Update message count
-                message_count = await self.get_message_count(session_id)
-                session.message_count = message_count
-                session.updated_at = datetime.now(timezone.utc)
-                
-                self.db.add(session)
-                
+            # Get recent messages in descending order, then reverse for chronological order
+            statement = (
+                select(MessageModel)
+                .where(MessageModel.session_id == session_id)
+                .order_by(MessageModel.timestamp.desc())
+                .limit(limit)
+            )
+            
+            messages = self.db.exec(statement).all()
+            # Reverse to get chronological order (oldest first)
+            messages_chronological = list(reversed(messages))
+            return [MessagePublic.model_validate(msg) for msg in messages_chronological]
+            
+        except SQLAlchemyError as e:
+            raise DatabaseError(f"Failed to retrieve recent messages: {str(e)}")
+        except ValidationError:
+            raise
         except Exception as e:
-            raise RuntimeError(f"Failed to update session after message: {str(e)}")
+            raise DatabaseError(f"Unexpected error retrieving recent messages: {str(e)}")
+    
+
     
     def _generate_session_title(self) -> str:
         """
