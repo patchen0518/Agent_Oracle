@@ -2,23 +2,26 @@
 
 ## Overview
 
-Oracle Chat AI provides a comprehensive REST API for managing persistent chat sessions with Google's Gemini AI. The API supports session management, message handling, and comprehensive monitoring capabilities with persistent Gemini sessions for optimal performance.
+Oracle Chat AI provides a comprehensive REST API for managing persistent chat sessions with Google's Gemini AI enhanced by LangChain integration. The API supports session management, message handling, intelligent memory strategies, and comprehensive monitoring capabilities with optimized conversation management.
 
 **Base URL:** `http://localhost:8000`  
 **API Version:** v1  
-**Current Version:** 1.2.0
+**Current Version:** 1.3.0 (LangChain Integration)
 
 ## Session Management Architecture
 
-### Optimized Gemini Sessions
+### LangChain-Enhanced Session Management
 
-Oracle implements efficient Gemini API session management with intelligent context handling:
+Oracle implements intelligent session management through LangChain integration with advanced memory strategies:
 
-- **Session Caching:** Active Gemini sessions are cached in memory (default: 1 hour, max 50 sessions)
+- **LangChain Integration:** ChatGoogleGenerativeAI with intelligent conversation management
+- **Smart Memory Strategies:** Buffer, summary, entity, and hybrid memory types for optimal context handling
+- **Context Optimization:** Automatic summarization and relevance-based context selection
+- **Session Caching:** Active LangChain sessions cached in memory (default: 1 hour, max 50 sessions)
 - **Automatic Cleanup:** Expired sessions are automatically removed to manage memory usage
-- **Context Restoration:** Sessions restore recent conversation context (last 10 messages) when recreated
+- **Intelligent Context Restoration:** Sessions restore optimized conversation context using memory strategies
 - **Performance Benefits:** 60-80% reduction in API token usage and 30-50% faster response times
-- **Database Persistence:** All conversation history stored in SQLite for reliability
+- **Database Persistence:** All conversation history stored in SQLite with memory strategy coordination
 
 ### Configuration Options
 
@@ -28,13 +31,38 @@ The following environment variables control the application:
 # Required
 GEMINI_API_KEY=your_api_key_here
 
-# Optional
+# Core Application Configuration
 GEMINI_MODEL=gemini-2.5-flash
 SYSTEM_INSTRUCTION_TYPE=default
 LOG_LEVEL=info
 ENVIRONMENT=development
 DATABASE_URL=sqlite:///./oracle_sessions.db
+
+# LangChain Integration Configuration
+LANGCHAIN_ENABLED=true
+LANGCHAIN_MEMORY_STRATEGY=hybrid
+LANGCHAIN_MAX_BUFFER_SIZE=20
+LANGCHAIN_MAX_TOKENS_BEFORE_SUMMARY=4000
+LANGCHAIN_ENTITY_EXTRACTION_ENABLED=true
+LANGCHAIN_MAX_TOKENS=4000
+LANGCHAIN_MESSAGES_TO_KEEP_AFTER_SUMMARY=20
+LANGCHAIN_RELEVANCE_THRESHOLD=0.7
+LANGCHAIN_ENABLE_SEMANTIC_SEARCH=true
+LANGCHAIN_SUMMARIZATION_TRIGGER_RATIO=0.8
+LANGCHAIN_SUMMARY_MODEL=gemini-2.5-flash
+LANGCHAIN_TEMPERATURE=0.7
+LANGCHAIN_MAX_OUTPUT_TOKENS=2048
+LANGCHAIN_LOG_LEVEL=info
+LANGCHAIN_ENABLE_PERFORMANCE_MONITORING=true
+LANGCHAIN_ENABLE_TOKEN_TRACKING=true
 ```
+
+#### LangChain Memory Strategies
+
+- **buffer**: Keep recent messages in full detail (configurable buffer size)
+- **summary**: Summarize older conversation parts while preserving recent context
+- **entity**: Extract and maintain important entities (names, dates, preferences)
+- **hybrid**: Combine strategies based on conversation length and importance
 
 ## Authentication
 
@@ -202,11 +230,13 @@ Sends a message within a session context using persistent Gemini sessions for op
 }
 ```
 
-**Performance Features:**
-- **Session Reuse:** Reuses existing Gemini sessions for faster responses
-- **Context Optimization:** Uses recent message context for efficient memory usage
-- **Token Efficiency:** 60-80% reduction in API token usage through session management
-- **Database Persistence:** All conversations stored reliably in SQLite
+**LangChain Performance Features:**
+- **Intelligent Memory Management:** Uses configurable memory strategies for optimal context handling
+- **Context Optimization:** Automatic summarization and relevance-based context selection
+- **Entity Extraction:** Remembers important facts and preferences within sessions
+- **Token Efficiency:** 60-80% reduction in API token usage through smart memory strategies
+- **Session Reuse:** Reuses existing LangChain sessions for faster responses
+- **Database Persistence:** All conversations stored reliably in SQLite with memory coordination
 
 **Status Codes:**
 - `200 OK` - Message sent successfully
@@ -330,15 +360,24 @@ All API errors follow a consistent format:
 - `SESSION_CREATION_FAILED` - Failed to create new session
 - `DATABASE_ERROR` - Database operation failed
 - `PERSISTENT_SESSION_ERROR` - Error with persistent session management
+- `LANGCHAIN_INITIALIZATION_ERROR` - LangChain model initialization failed
+- `MEMORY_STRATEGY_ERROR` - Memory management operation failed
+- `CONTEXT_OPTIMIZATION_ERROR` - Context optimization failed
+- `ENTITY_EXTRACTION_ERROR` - Entity extraction operation failed
+- `SUMMARIZATION_ERROR` - Conversation summarization failed
 
 ### Fallback Behavior
 
-When persistent session management encounters errors:
+When LangChain integration encounters errors:
 
-1. **Session Creation Failure:** Attempts session recovery from database
-2. **Session Recovery Failure:** Falls back to stateless mode for that request
-3. **API Errors:** Provides detailed error context while maintaining database persistence
-4. **Memory Pressure:** Automatically triggers session cleanup and continues operation
+1. **LangChain Initialization Failure:** Falls back to direct Gemini API integration
+2. **Memory Strategy Failure:** Degrades to simple buffer memory for that session
+3. **Context Optimization Failure:** Uses basic message trimming instead of smart optimization
+4. **Entity Extraction Failure:** Continues without entity tracking for that conversation
+5. **Summarization Failure:** Maintains full conversation history within token limits
+6. **Session Recovery Failure:** Falls back to stateless mode for that request
+7. **API Errors:** Provides detailed error context while maintaining database persistence
+8. **Memory Pressure:** Automatically triggers session cleanup and continues operation
 
 ## Rate Limiting
 
@@ -366,20 +405,26 @@ Configure via `SYSTEM_INSTRUCTION_TYPE` environment variable:
 
 ## Performance Optimizations
 
-### Session Management Benefits
+### LangChain Integration Benefits
 
-- **Token Usage Reduction:** 60-80% fewer tokens consumed through session reuse
-- **Response Time Improvement:** 30-50% faster responses via session caching
-- **Context Efficiency:** Uses recent message context (last 10 messages) for optimal memory usage
-- **Database Persistence:** All conversations reliably stored in SQLite
+- **Intelligent Memory Management:** Smart memory strategies reduce token usage while improving context quality
+- **Token Usage Reduction:** 60-80% fewer tokens consumed through optimized context selection
+- **Response Time Improvement:** 30-50% faster responses via LangChain session caching
+- **Context Optimization:** Automatic summarization and relevance-based context selection
+- **Entity Extraction:** Remembers important facts without storing full conversation history
+- **Database Persistence:** All conversations reliably stored in SQLite with memory coordination
 - **Automatic Cleanup:** Smart session management with configurable limits
+- **Fallback Mechanisms:** Graceful degradation when advanced features fail
 
 ### Best Practices
 
 1. **Session Reuse:** Keep sessions active for ongoing conversations
-2. **Context Management:** System automatically handles conversation context
-3. **Error Handling:** Implement proper error handling for graceful degradation
-4. **Database Monitoring:** Monitor database health and performance
+2. **Memory Strategy Selection:** Choose appropriate memory strategy based on conversation type
+3. **Context Management:** System automatically handles conversation context with LangChain optimization
+4. **Error Handling:** Implement proper error handling for graceful degradation
+5. **Database Monitoring:** Monitor database health and performance
+6. **Token Monitoring:** Track token usage improvements with LangChain integration
+7. **Memory Configuration:** Tune memory strategy parameters for optimal performance
 
 ## SDK and Integration Examples
 
@@ -429,9 +474,139 @@ console.log('AI Response:', chatResult.assistant_message.content);
 console.log('Session ID:', chatResult.session.id);
 ```
 
+## LangChain Integration Configuration
+
+### Memory Strategy Configuration
+
+Configure memory strategies via environment variables:
+
+```ini
+# Memory strategy selection
+LANGCHAIN_MEMORY_STRATEGY=hybrid  # buffer, summary, entity, hybrid
+
+# Buffer memory settings
+LANGCHAIN_MAX_BUFFER_SIZE=20
+LANGCHAIN_MAX_TOKENS_BEFORE_SUMMARY=4000
+
+# Entity extraction settings
+LANGCHAIN_ENTITY_EXTRACTION_ENABLED=true
+
+# Context optimization settings
+LANGCHAIN_MAX_TOKENS=4000
+LANGCHAIN_MESSAGES_TO_KEEP_AFTER_SUMMARY=20
+LANGCHAIN_RELEVANCE_THRESHOLD=0.7
+LANGCHAIN_ENABLE_SEMANTIC_SEARCH=true
+LANGCHAIN_SUMMARIZATION_TRIGGER_RATIO=0.8
+
+# Model configuration
+LANGCHAIN_SUMMARY_MODEL=gemini-2.5-flash
+LANGCHAIN_TEMPERATURE=0.7
+LANGCHAIN_MAX_OUTPUT_TOKENS=2048
+
+# Monitoring and logging
+LANGCHAIN_LOG_LEVEL=info
+LANGCHAIN_ENABLE_PERFORMANCE_MONITORING=true
+LANGCHAIN_ENABLE_TOKEN_TRACKING=true
+```
+
+### Feature Flag Configuration
+
+LangChain integration supports gradual rollout via feature flags:
+
+```json
+{
+  "langchain_integration": {
+    "state": "percentage_rollout",
+    "percentage": 10,
+    "environment_override": "ENABLE_LANGCHAIN"
+  },
+  "langchain_memory_strategies": {
+    "state": "disabled",
+    "environment_override": "ENABLE_LANGCHAIN_MEMORY"
+  },
+  "context_optimization": {
+    "state": "percentage_rollout", 
+    "percentage": 25,
+    "environment_override": "ENABLE_CONTEXT_OPTIMIZATION"
+  }
+}
+```
+
+### Troubleshooting LangChain Integration
+
+#### Common Issues
+
+1. **LangChain Initialization Errors**
+   - Verify GEMINI_API_KEY is correctly set
+   - Check LANGCHAIN_ENABLED=true in environment
+   - Ensure LangChain dependencies are installed
+
+2. **Memory Strategy Failures**
+   - Check LANGCHAIN_MEMORY_STRATEGY is valid (buffer, summary, entity, hybrid)
+   - Verify LANGCHAIN_MAX_BUFFER_SIZE > 0
+   - Check memory configuration parameters are within valid ranges
+
+3. **Context Optimization Issues**
+   - Verify LANGCHAIN_MAX_TOKENS > 0
+   - Check LANGCHAIN_RELEVANCE_THRESHOLD is between 0.0 and 1.0
+   - Ensure LANGCHAIN_SUMMARIZATION_TRIGGER_RATIO is between 0.0 and 1.0
+
+4. **Entity Extraction Problems**
+   - Check LANGCHAIN_ENTITY_EXTRACTION_ENABLED=true
+   - Verify sufficient conversation history for entity extraction
+   - Monitor logs for entity extraction errors
+
+#### Monitoring LangChain Operations
+
+Monitor LangChain integration through logs and health endpoints:
+
+```bash
+# Check LangChain configuration
+curl http://localhost:8000/health
+
+# Monitor LangChain logs
+grep "langchain" backend/logs/backend.log
+
+# Check memory strategy usage
+grep "memory_strategy" backend/logs/backend.log
+
+# Monitor token usage improvements
+grep "token_usage" backend/logs/backend.log
+```
+
+#### Performance Tuning
+
+Optimize LangChain performance by adjusting configuration:
+
+1. **Memory Strategy Selection:**
+   - Use `buffer` for short conversations
+   - Use `summary` for long conversations with less entity tracking
+   - Use `entity` for conversations requiring fact retention
+   - Use `hybrid` for balanced performance (recommended)
+
+2. **Token Management:**
+   - Adjust `LANGCHAIN_MAX_TOKENS` based on model limits
+   - Tune `LANGCHAIN_SUMMARIZATION_TRIGGER_RATIO` for summarization frequency
+   - Configure `LANGCHAIN_MESSAGES_TO_KEEP_AFTER_SUMMARY` for context preservation
+
+3. **Context Optimization:**
+   - Set `LANGCHAIN_RELEVANCE_THRESHOLD` higher for more selective context
+   - Enable `LANGCHAIN_ENABLE_SEMANTIC_SEARCH` for better context selection
+   - Adjust `LANGCHAIN_MAX_BUFFER_SIZE` based on conversation patterns
+
 ## Changelog
 
-### Version 1.2.0 (Current)
+### Version 1.3.0 (Current - LangChain Integration)
+- Added LangChain integration with ChatGoogleGenerativeAI
+- Implemented intelligent memory strategies (buffer, summary, entity, hybrid)
+- Added context optimization with automatic summarization
+- Implemented entity extraction and fact retention
+- Added comprehensive error handling and fallback mechanisms
+- Enhanced monitoring with LangChain-specific metrics
+- Added feature flag support for gradual rollout
+- Improved token usage efficiency through smart memory management
+
+### Version 1.2.0
 - Added persistent Gemini session management
 - Implemented session caching with automatic cleanup
 - Added session recovery from database history
