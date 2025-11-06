@@ -3,10 +3,10 @@ System instruction configurations for Oracle Chat AI.
 
 This module contains different system instruction templates that can be used
 to configure the AI's behavior, personality, and capabilities for different
-occasions or use cases.
+occasions or use cases. Supports both direct API usage and LangChain integration.
 """
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 import os
 
 
@@ -225,3 +225,145 @@ Response Style:
 - Provide evidence-based recommendations when possible
 - Include relevant context and considerations specific to {domain}
 """
+
+
+# LangChain-specific system instruction enhancements
+LANGCHAIN_MEMORY_AWARE_INSTRUCTIONS = {
+    "default": """
+
+Memory Management Guidelines:
+- Reference previous conversations naturally when relevant
+- Build upon established context and user preferences
+- Maintain consistency with previously discussed topics
+- Ask for clarification if context seems incomplete
+""",
+    
+    "professional": """
+
+Memory Management Guidelines:
+- Track project details and business context across conversations
+- Remember client preferences and communication styles
+- Build upon previous strategic discussions and decisions
+- Maintain professional continuity in ongoing business relationships
+""",
+    
+    "technical": """
+
+Memory Management Guidelines:
+- Remember technical specifications and architecture decisions
+- Track ongoing development projects and their requirements
+- Reference previous code examples and solutions when relevant
+- Maintain consistency in technical recommendations and approaches
+""",
+    
+    "creative": """
+
+Memory Management Guidelines:
+- Remember creative projects and artistic preferences
+- Build upon previous brainstorming sessions and ideas
+- Track creative goals and inspirational themes
+- Maintain the creative flow and momentum across conversations
+""",
+    
+    "educational": """
+
+Memory Management Guidelines:
+- Track learning progress and previously covered topics
+- Remember student's learning style and pace preferences
+- Build upon previous lessons and knowledge assessments
+- Maintain educational continuity and progression
+"""
+}
+
+
+def get_langchain_enhanced_instruction(instruction_type: Optional[str] = None) -> str:
+    """
+    Get a system instruction enhanced for LangChain memory management.
+    
+    Args:
+        instruction_type: The type of instruction to retrieve.
+                         If None, uses environment variable or default.
+    
+    Returns:
+        str: The enhanced system instruction text with memory guidelines
+    """
+    base_instruction = get_system_instruction(instruction_type)
+    
+    # Normalize the instruction type
+    if instruction_type is None:
+        instruction_type = os.getenv("SYSTEM_INSTRUCTION_TYPE", "default")
+    instruction_type = instruction_type.lower().strip()
+    
+    # Add LangChain-specific memory management guidelines
+    memory_enhancement = LANGCHAIN_MEMORY_AWARE_INSTRUCTIONS.get(
+        instruction_type, 
+        LANGCHAIN_MEMORY_AWARE_INSTRUCTIONS["default"]
+    )
+    
+    return base_instruction + memory_enhancement
+
+
+def create_langchain_system_message_dict(instruction_type: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Create a dictionary suitable for LangChain SystemMessage initialization.
+    
+    Args:
+        instruction_type: The type of instruction to retrieve.
+    
+    Returns:
+        Dict[str, Any]: Dictionary with 'content' key for SystemMessage
+    """
+    instruction_content = get_langchain_enhanced_instruction(instruction_type)
+    
+    return {
+        "content": instruction_content,
+        "additional_kwargs": {
+            "instruction_type": instruction_type or os.getenv("SYSTEM_INSTRUCTION_TYPE", "default"),
+            "enhanced_for_langchain": True,
+            "memory_aware": True
+        }
+    }
+
+
+def validate_system_instruction_compatibility(instruction_type: str) -> bool:
+    """
+    Validate that a system instruction type is compatible with LangChain.
+    
+    Args:
+        instruction_type: The instruction type to validate
+    
+    Returns:
+        bool: True if compatible, False otherwise
+    """
+    return instruction_type.lower().strip() in SYSTEM_INSTRUCTIONS
+
+
+def get_instruction_metadata(instruction_type: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Get metadata about a system instruction for monitoring and debugging.
+    
+    Args:
+        instruction_type: The instruction type to get metadata for
+    
+    Returns:
+        Dict[str, Any]: Metadata including type, length, and features
+    """
+    if instruction_type is None:
+        instruction_type = os.getenv("SYSTEM_INSTRUCTION_TYPE", "default")
+    
+    instruction_type = instruction_type.lower().strip()
+    
+    if instruction_type not in SYSTEM_INSTRUCTIONS:
+        return {"error": f"Unknown instruction type: {instruction_type}"}
+    
+    base_instruction = SYSTEM_INSTRUCTIONS[instruction_type]
+    enhanced_instruction = get_langchain_enhanced_instruction(instruction_type)
+    
+    return {
+        "type": instruction_type,
+        "base_length": len(base_instruction),
+        "enhanced_length": len(enhanced_instruction),
+        "memory_aware": True,
+        "langchain_compatible": True,
+        "description": list_available_instructions().get(instruction_type, "Unknown")
+    }
