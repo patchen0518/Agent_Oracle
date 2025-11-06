@@ -7,17 +7,22 @@ Includes session-based metrics and database connectivity monitoring.
 """
 
 from fastapi import APIRouter, Request, HTTPException, Depends
+from fastapi.responses import HTMLResponse
 from typing import Dict, Any, List
 import os
 import psutil
 from datetime import datetime, timedelta
 from sqlmodel import Session, select, func
+from pathlib import Path
 
 from backend.utils.logging_config import get_logger
 from backend.config.database import get_session, check_database_connection
 from backend.models.session_models import Session as SessionModel, Message as MessageModel
 from backend.services.gemini_client import GeminiClient
 from backend.services.session_chat_service import SessionChatService
+from backend.services.langchain_monitoring import langchain_monitor
+from backend.services.langchain_performance_monitor import performance_monitor
+from backend.services.langchain_dashboard import langchain_dashboard
 
 # Create the router
 router = APIRouter(prefix="/api/v1/monitoring", tags=["monitoring"])
@@ -999,4 +1004,576 @@ async def session_recovery_health(request: Request, db: Session = Depends(get_se
         raise HTTPException(
             status_code=500,
             detail="Session recovery health check service failed"
+        )
+
+
+@router.get("/langchain/performance")
+async def langchain_performance_metrics(request: Request) -> Dict[str, Any]:
+    """
+    Get comprehensive LangChain performance metrics and comparison with baseline.
+    
+    Returns:
+        Dict[str, Any]: Performance metrics, improvements, and trend analysis
+    """
+    try:
+        # Get performance comparison data
+        performance_data = performance_monitor.get_performance_comparison()
+        
+        # Get monitoring statistics
+        monitoring_stats = langchain_monitor.get_monitoring_stats()
+        
+        # Combine performance and monitoring data
+        combined_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "performance_comparison": performance_data,
+            "monitoring_statistics": monitoring_stats,
+            "health_status": performance_monitor.health_status
+        }
+        
+        logger.debug("LangChain performance metrics retrieved", extra=combined_data)
+        return combined_data
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve LangChain performance metrics: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="LangChain performance metrics service failed"
+        )
+
+
+@router.get("/langchain/health")
+async def langchain_health_check(request: Request) -> Dict[str, Any]:
+    """
+    Comprehensive health check for LangChain integration components.
+    
+    Returns:
+        Dict[str, Any]: Health status, component diagnostics, and recommendations
+    """
+    try:
+        # Perform comprehensive health check
+        health_data = performance_monitor.check_langchain_health()
+        
+        logger.debug("LangChain health check completed", extra=health_data)
+        return health_data
+        
+    except Exception as e:
+        logger.error(f"LangChain health check failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="LangChain health check service failed"
+        )
+
+
+@router.get("/langchain/sessions/{session_id}/performance")
+async def langchain_session_performance(
+    request: Request, 
+    session_id: int
+) -> Dict[str, Any]:
+    """
+    Get performance statistics for a specific LangChain session.
+    
+    Args:
+        session_id: Session ID to analyze
+        
+    Returns:
+        Dict[str, Any]: Session-specific performance metrics and statistics
+    """
+    try:
+        # Get session performance statistics
+        session_stats = performance_monitor.get_session_performance_stats(session_id)
+        
+        # Get session monitoring statistics
+        monitoring_session_stats = langchain_monitor.get_session_stats(session_id)
+        
+        # Combine session data
+        combined_stats = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "session_id": session_id,
+            "performance_stats": session_stats,
+            "monitoring_stats": monitoring_session_stats
+        }
+        
+        logger.debug(f"LangChain session {session_id} performance retrieved", extra=combined_stats)
+        return combined_stats
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve session {session_id} performance: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Session {session_id} performance service failed"
+        )
+
+
+@router.get("/langchain/token-usage")
+async def langchain_token_usage_metrics(request: Request) -> Dict[str, Any]:
+    """
+    Get detailed token usage metrics and optimization statistics.
+    
+    Returns:
+        Dict[str, Any]: Token usage statistics, savings, and optimization insights
+    """
+    try:
+        # Get monitoring statistics for token data
+        monitoring_stats = langchain_monitor.get_monitoring_stats()
+        
+        # Get performance comparison for token improvements
+        performance_data = performance_monitor.get_performance_comparison()
+        
+        # Extract token-specific metrics
+        token_metrics = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "total_tokens_processed": monitoring_stats.get("token_statistics", {}).get("total_tokens_processed", 0),
+            "total_tokens_saved": monitoring_stats.get("token_statistics", {}).get("total_tokens_saved", 0),
+            "token_savings_rate": 0,
+            "optimization_effectiveness": {},
+            "recent_operations": []
+        }
+        
+        # Calculate token savings rate
+        total_processed = token_metrics["total_tokens_processed"]
+        total_saved = token_metrics["total_tokens_saved"]
+        if total_processed > 0:
+            token_metrics["token_savings_rate"] = (total_saved / (total_processed + total_saved)) * 100
+        
+        # Extract optimization effectiveness from performance data
+        if "improvements" in performance_data:
+            improvements = performance_data["improvements"]
+            token_metrics["optimization_effectiveness"] = {
+                "token_usage_improvement_percent": improvements.get("token_usage_improvement_percent", 0),
+                "overall_performance_improvement_percent": improvements.get("overall_performance_improvement_percent", 0)
+            }
+        
+        # Get recent token-related operations
+        recent_ops = monitoring_stats.get("recent_operations", [])
+        token_metrics["recent_operations"] = [
+            op for op in recent_ops[-20:] 
+            if op.get("tokens_saved", 0) > 0
+        ]
+        
+        logger.debug("LangChain token usage metrics retrieved", extra=token_metrics)
+        return token_metrics
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve token usage metrics: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Token usage metrics service failed"
+        )
+
+
+@router.get("/langchain/memory-strategies")
+async def langchain_memory_strategy_metrics(request: Request) -> Dict[str, Any]:
+    """
+    Get memory strategy usage statistics and effectiveness metrics.
+    
+    Returns:
+        Dict[str, Any]: Memory strategy usage, performance, and recommendations
+    """
+    try:
+        # Get monitoring statistics
+        monitoring_stats = langchain_monitor.get_monitoring_stats()
+        
+        # Analyze memory strategy usage from recent operations
+        recent_ops = monitoring_stats.get("recent_operations", [])
+        
+        # Count strategy usage
+        strategy_usage = {}
+        fallback_count = 0
+        optimization_count = 0
+        
+        for op in recent_ops:
+            # Count fallbacks
+            if op.get("fallback_triggered", False):
+                fallback_count += 1
+            
+            # Count optimizations (operations with tokens saved)
+            if op.get("tokens_saved", 0) > 0:
+                optimization_count += 1
+        
+        # Calculate rates
+        total_recent_ops = len(recent_ops)
+        fallback_rate = fallback_count / max(1, total_recent_ops)
+        optimization_rate = optimization_count / max(1, total_recent_ops)
+        
+        memory_metrics = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "strategy_usage": strategy_usage,
+            "effectiveness_metrics": {
+                "fallback_rate": fallback_rate,
+                "optimization_rate": optimization_rate,
+                "total_fallbacks": monitoring_stats.get("token_statistics", {}).get("total_fallbacks_triggered", 0)
+            },
+            "performance_indicators": {
+                "memory_health": "healthy" if fallback_rate < 0.1 else "degraded",
+                "optimization_effectiveness": "good" if optimization_rate > 0.5 else "moderate"
+            },
+            "recommendations": []
+        }
+        
+        # Generate recommendations
+        if fallback_rate > 0.2:
+            memory_metrics["recommendations"].append("High fallback rate detected - review memory strategy configuration")
+        
+        if optimization_rate < 0.3:
+            memory_metrics["recommendations"].append("Low optimization rate - consider adjusting context optimization settings")
+        
+        if not memory_metrics["recommendations"]:
+            memory_metrics["recommendations"].append("Memory strategies are performing well")
+        
+        logger.debug("LangChain memory strategy metrics retrieved", extra=memory_metrics)
+        return memory_metrics
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve memory strategy metrics: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Memory strategy metrics service failed"
+        )
+
+
+@router.post("/langchain/performance/reset")
+async def reset_langchain_performance_data(request: Request) -> Dict[str, str]:
+    """
+    Reset LangChain performance monitoring data (for development/testing).
+    
+    Returns:
+        Dict[str, str]: Reset confirmation
+    """
+    try:
+        # Reset performance monitor data
+        performance_monitor.reset_performance_data()
+        
+        # Reset monitoring statistics
+        langchain_monitor.reset_stats()
+        
+        logger.info("LangChain performance data reset")
+        
+        return {
+            "status": "success",
+            "message": "LangChain performance monitoring data has been reset",
+            "reset_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to reset LangChain performance data: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Performance data reset failed"
+        )
+
+
+@router.get("/langchain/export/{hours}")
+async def export_langchain_performance_data(
+    request: Request, 
+    hours: int = 24
+) -> Dict[str, Any]:
+    """
+    Export LangChain performance data for analysis.
+    
+    Args:
+        hours: Number of hours of data to export (default: 24, max: 168)
+        
+    Returns:
+        Dict[str, Any]: Exported performance data and summary statistics
+    """
+    try:
+        # Validate hours parameter
+        if hours < 1 or hours > 168:  # Max 1 week
+            raise HTTPException(
+                status_code=400, 
+                detail="Hours must be between 1 and 168 (1 week)"
+            )
+        
+        # Export performance data
+        export_data = performance_monitor.export_performance_data(hours)
+        
+        logger.info(f"Exported {hours} hours of LangChain performance data")
+        return export_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to export performance data: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Performance data export failed"
+        )
+
+
+@router.get("/langchain/dashboard")
+async def langchain_dashboard_data(request: Request) -> Dict[str, Any]:
+    """
+    Get comprehensive LangChain monitoring dashboard data.
+    
+    Returns:
+        Dict[str, Any]: Complete dashboard data including metrics, charts, and alerts
+    """
+    try:
+        # Get dashboard data
+        dashboard_data = langchain_dashboard.get_dashboard_data()
+        
+        logger.debug("LangChain dashboard data retrieved")
+        return dashboard_data
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve dashboard data: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Dashboard data service failed"
+        )
+
+
+@router.get("/langchain/dashboard/realtime")
+async def langchain_realtime_metrics(request: Request) -> Dict[str, Any]:
+    """
+    Get real-time metrics for dashboard updates.
+    
+    Returns:
+        Dict[str, Any]: Real-time metrics and current system status
+    """
+    try:
+        # Get real-time metrics
+        realtime_data = langchain_dashboard.get_real_time_metrics()
+        
+        logger.debug("LangChain real-time metrics retrieved")
+        return realtime_data
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve real-time metrics: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Real-time metrics service failed"
+        )
+
+
+@router.get("/langchain/alerts")
+async def langchain_alerts(request: Request, hours: int = 24) -> Dict[str, Any]:
+    """
+    Get LangChain alerts and alert history.
+    
+    Args:
+        hours: Number of hours of alert history to retrieve (default: 24)
+        
+    Returns:
+        Dict[str, Any]: Alert information and history
+    """
+    try:
+        # Validate hours parameter
+        if hours < 1 or hours > 168:  # Max 1 week
+            raise HTTPException(
+                status_code=400,
+                detail="Hours must be between 1 and 168 (1 week)"
+            )
+        
+        # Get alert history
+        alert_history = langchain_dashboard.get_alert_history(hours)
+        
+        # Get current alert summary
+        dashboard_data = langchain_dashboard.get_dashboard_data()
+        alert_summary = dashboard_data.get("alerts", {})
+        
+        alerts_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "time_period_hours": hours,
+            "summary": alert_summary,
+            "alert_history": alert_history
+        }
+        
+        logger.debug(f"LangChain alerts retrieved for {hours} hours")
+        return alerts_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to retrieve alerts: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Alerts service failed"
+        )
+
+
+@router.post("/langchain/alerts/{alert_id}/resolve")
+async def resolve_langchain_alert(request: Request, alert_id: str) -> Dict[str, str]:
+    """
+    Manually resolve a LangChain alert.
+    
+    Args:
+        alert_id: ID of the alert to resolve
+        
+    Returns:
+        Dict[str, str]: Resolution confirmation
+    """
+    try:
+        # Resolve the alert
+        resolved = langchain_dashboard.resolve_alert(alert_id)
+        
+        if resolved:
+            logger.info(f"Alert {alert_id} resolved manually")
+            return {
+                "status": "success",
+                "message": f"Alert {alert_id} has been resolved",
+                "resolved_at": datetime.utcnow().isoformat()
+            }
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Alert {alert_id} not found or already resolved"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to resolve alert {alert_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Alert resolution failed"
+        )
+
+
+@router.put("/langchain/alerts/thresholds")
+async def update_alert_thresholds(
+    request: Request,
+    thresholds: Dict[str, Dict[str, float]]
+) -> Dict[str, str]:
+    """
+    Update alert thresholds for LangChain monitoring.
+    
+    Args:
+        thresholds: Dictionary of threshold configurations
+        
+    Returns:
+        Dict[str, str]: Update confirmation
+    """
+    try:
+        # Validate threshold structure
+        valid_metrics = ["response_time_ms", "error_rate", "fallback_rate", "memory_usage_percent", "cpu_usage_percent"]
+        valid_levels = ["warning", "critical"]
+        
+        for metric, levels in thresholds.items():
+            if metric not in valid_metrics:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid metric: {metric}. Valid metrics: {valid_metrics}"
+                )
+            
+            for level, value in levels.items():
+                if level not in valid_levels:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid threshold level: {level}. Valid levels: {valid_levels}"
+                    )
+                
+                if not isinstance(value, (int, float)) or value < 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid threshold value: {value}. Must be a positive number"
+                    )
+        
+        # Update thresholds
+        langchain_dashboard.update_alert_thresholds(thresholds)
+        
+        logger.info(f"Alert thresholds updated: {thresholds}")
+        return {
+            "status": "success",
+            "message": "Alert thresholds updated successfully",
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update alert thresholds: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Threshold update failed"
+        )
+
+
+@router.get("/langchain/dashboard/charts/{chart_type}")
+async def langchain_dashboard_chart_data(
+    request: Request, 
+    chart_type: str,
+    hours: int = 24
+) -> Dict[str, Any]:
+    """
+    Get specific chart data for LangChain dashboard.
+    
+    Args:
+        chart_type: Type of chart data to retrieve
+        hours: Number of hours of data to include
+        
+    Returns:
+        Dict[str, Any]: Chart-specific data
+    """
+    try:
+        # Validate parameters
+        valid_chart_types = ["response_times", "token_savings", "operation_counts", "performance_trend", "error_rates"]
+        if chart_type not in valid_chart_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid chart type: {chart_type}. Valid types: {valid_chart_types}"
+            )
+        
+        if hours < 1 or hours > 168:  # Max 1 week
+            raise HTTPException(
+                status_code=400,
+                detail="Hours must be between 1 and 168 (1 week)"
+            )
+        
+        # Get dashboard data
+        dashboard_data = langchain_dashboard.get_dashboard_data()
+        charts = dashboard_data.get("charts", {})
+        
+        # Return specific chart data
+        chart_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "chart_type": chart_type,
+            "time_period_hours": hours,
+            "data": charts.get(chart_type, [])
+        }
+        
+        logger.debug(f"Chart data retrieved: {chart_type}")
+        return chart_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to retrieve chart data for {chart_type}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Chart data service failed"
+        )
+
+
+@router.get("/langchain/dashboard/view", response_class=HTMLResponse)
+async def langchain_dashboard_view(request: Request) -> HTMLResponse:
+    """
+    Serve the LangChain monitoring dashboard HTML interface.
+    
+    Returns:
+        HTMLResponse: Dashboard HTML page
+    """
+    try:
+        # Get the path to the dashboard template
+        template_path = Path(__file__).parent.parent.parent / "templates" / "langchain_dashboard.html"
+        
+        if not template_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="Dashboard template not found"
+            )
+        
+        # Read and return the HTML template
+        with open(template_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        
+        return HTMLResponse(content=html_content, status_code=200)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to serve dashboard view: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Dashboard view service failed"
         )

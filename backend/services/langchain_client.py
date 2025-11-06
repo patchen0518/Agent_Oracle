@@ -24,6 +24,11 @@ from backend.exceptions import (
     handle_langchain_exception
 )
 from backend.config.system_instructions import get_system_instruction, list_available_instructions
+from backend.services.langchain_monitoring import (
+    langchain_monitor, 
+    monitor_langchain_operation, 
+    OperationType
+)
 
 
 class LangChainClient:
@@ -35,6 +40,7 @@ class LangChainClient:
     management and memory strategies.
     """
     
+    @monitor_langchain_operation(OperationType.CLIENT_INIT)
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         """
         Initialize the LangChain client.
@@ -104,6 +110,17 @@ class LangChainClient:
         # Initialize logger
         self.logger = get_logger("langchain_client")
         
+        # Log initialization with monitoring
+        langchain_monitor.log_memory_strategy_usage(
+            session_id=None,
+            strategy="client_initialization",
+            operation_details={
+                "model": self.model,
+                "api_key_present": bool(api_key),
+                "max_sessions": self.max_sessions
+            }
+        )
+        
         self.logger.info(f"LangChainClient initialized with model: {self.model}")
         
         # Log available system instruction types
@@ -136,47 +153,85 @@ class LangChainClient:
             self.logger.debug(f"Reusing existing LangChain session for session_id {session_id}")
             return self.active_sessions[session_id]
         
-        # Create new LangChain chat session
-        try:
-            # Import here to avoid circular imports
-            from backend.services.context_optimizer import ContextOptimizer, ContextConfig
+        # Monitor session creation
+        with langchain_monitor.monitor_operation(
+            OperationType.SESSION_CREATE, 
+            session_id,
+            system_instruction_present=bool(system_instruction),
+            recent_messages_count=len(recent_messages) if recent_messages else 0
+        ) as operation_id:
             
-            # Create context optimizer for this session
-            context_config = ContextConfig()
-            context_optimizer = ContextOptimizer(config=context_config, session_id=session_id)
-            
-            chat_session = LangChainChatSession(
-                chat_model=self.chat_model,
-                session_id=session_id,
-                system_instruction=system_instruction,
-                context_optimizer=context_optimizer
-            )
-            
-            # Restore recent conversation context if provided
-            if recent_messages:
-                chat_session.restore_context(recent_messages)
-                self.logger.info(f"Restored {len(recent_messages)} recent messages for session_id {session_id}")
-            
-            self.active_sessions[session_id] = chat_session
-            self.sessions_created += 1
-            
-            self.logger.info(f"Created new LangChain session for session_id {session_id}")
-            return chat_session
-            
-        except LangChainException as e:
-            mapped_error = LangChainExceptionMapper.map_langchain_exception(
-                e,
-                f"Failed to create LangChain session for session {session_id}",
-                session_id=session_id
-            )
-            raise mapped_error
-        except Exception as e:
-            mapped_error = LangChainExceptionMapper.map_langchain_exception(
-                e,
-                f"Failed to create chat session for session {session_id}",
-                session_id=session_id
-            )
-            raise mapped_error
+            # Create new LangChain chat session
+            try:
+                # Import here to avoid circular imports
+                from backend.services.context_optimizer import ContextOptimizer, ContextConfig
+                
+                # Create context optimizer for this session
+                context_config = ContextConfig()
+                context_optimizer = ContextOptimizer(config=context_config, session_id=session_id)
+                
+                chat_session = LangChainChatSession(
+                    chat_model=self.chat_model,
+                    session_id=session_id,
+                    system_instruction=system_instruction,
+                    context_optimizer=context_optimizer
+                )
+                
+                # Restore recent conversation context if provided
+                if recent_messages:
+                    with langchain_monitor.monitor_operation(
+                        OperationType.SESSION_RESTORE,
+                        session_id,
+                        messages_to_restore=len(recent_messages)
+                    ):
+                        chat_session.restore_context(recent_messages)
+                        
+                        # Log context restoration
+                        langchain_monitor.log_memory_strategy_usage(
+                            session_id=session_id,
+                            strategy="context_restoration",
+                            operation_details={
+                                "messages_restored": len(recent_messages),
+                                "system_instruction_present": bool(system_instruction)
+                            }
+                        )
+                        
+                        self.logger.info(f"Restored {len(recent_messages)} recent messages for session_id {session_id}")
+                
+                self.active_sessions[session_id] = chat_session
+                self.sessions_created += 1
+                
+                # Log successful session creation
+                langchain_monitor.log_memory_strategy_usage(
+                    session_id=session_id,
+                    strategy="session_creation",
+                    operation_details={
+                        "total_active_sessions": len(self.active_sessions),
+                        "sessions_created_total": self.sessions_created,
+                        "context_optimizer_config": {
+                            "max_tokens": context_config.max_tokens,
+                            "strategy": context_config.optimization_strategy.value
+                        }
+                    }
+                )
+                
+                self.logger.info(f"Created new LangChain session for session_id {session_id}")
+                return chat_session
+                
+            except LangChainException as e:
+                mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                    e,
+                    f"Failed to create LangChain session for session {session_id}",
+                    session_id=session_id
+                )
+                raise mapped_error
+            except Exception as e:
+                mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                    e,
+                    f"Failed to create chat session for session {session_id}",
+                    session_id=session_id
+                )
+                raise mapped_error
     
     def remove_session(self, session_id: int) -> bool:
         """

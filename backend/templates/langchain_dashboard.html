@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LangChain Monitoring Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+        
+        .header .subtitle {
+            opacity: 0.9;
+            margin-top: 0.25rem;
+        }
+        
+        .dashboard {
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .metric-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-left: 4px solid #667eea;
+        }
+        
+        .metric-card.warning {
+            border-left-color: #f39c12;
+        }
+        
+        .metric-card.critical {
+            border-left-color: #e74c3c;
+        }
+        
+        .metric-card.success {
+            border-left-color: #27ae60;
+        }
+        
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+        
+        .metric-label {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .metric-change {
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+        }
+        
+        .metric-change.positive {
+            color: #27ae60;
+        }
+        
+        .metric-change.negative {
+            color: #e74c3c;
+        }
+        
+        .charts-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .chart-container {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .chart-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+        
+        .alerts-section {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+        
+        .alert-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .alert-item.warning {
+            background-color: #fef9e7;
+            border-left-color: #f39c12;
+        }
+        
+        .alert-item.critical {
+            background-color: #fdedec;
+            border-left-color: #e74c3c;
+        }
+        
+        .alert-severity {
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            margin-right: 1rem;
+        }
+        
+        .alert-severity.warning {
+            background-color: #f39c12;
+            color: white;
+        }
+        
+        .alert-severity.critical {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        .alert-content {
+            flex: 1;
+        }
+        
+        .alert-title {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        
+        .alert-message {
+            font-size: 0.9rem;
+            color: #7f8c8d;
+        }
+        
+        .alert-time {
+            font-size: 0.8rem;
+            color: #95a5a6;
+            margin-left: 1rem;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+        
+        .status-indicator.healthy {
+            background-color: #27ae60;
+        }
+        
+        .status-indicator.warning {
+            background-color: #f39c12;
+        }
+        
+        .status-indicator.critical {
+            background-color: #e74c3c;
+        }
+        
+        .refresh-info {
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            margin-top: 2rem;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #7f8c8d;
+        }
+        
+        .error {
+            background-color: #fdedec;
+            border: 1px solid #e74c3c;
+            border-radius: 4px;
+            padding: 1rem;
+            margin: 1rem 0;
+            color: #c0392b;
+        }
+        
+        @media (max-width: 768px) {
+            .charts-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .dashboard {
+                padding: 1rem;
+            }
+            
+            .header {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>LangChain Monitoring Dashboard</h1>
+        <div class="subtitle">Real-time monitoring and performance metrics</div>
+    </div>
+    
+    <div class="dashboard">
+        <div id="loading" class="loading">
+            Loading dashboard data...
+        </div>
+        
+        <div id="error" class="error" style="display: none;">
+            Failed to load dashboard data. Please try refreshing the page.
+        </div>
+        
+        <div id="dashboard-content" style="display: none;">
+            <!-- Overview Metrics -->
+            <div class="metrics-grid" id="metrics-grid">
+                <!-- Metrics will be populated by JavaScript -->
+            </div>
+            
+            <!-- Charts Section -->
+            <div class="charts-section">
+                <div class="chart-container">
+                    <div class="chart-title">Response Time Trend</div>
+                    <canvas id="responseTimeChart" width="400" height="200"></canvas>
+                </div>
+                
+                <div class="chart-container">
+                    <div class="chart-title">Token Savings</div>
+                    <canvas id="tokenSavingsChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+            
+            <!-- Alerts Section -->
+            <div class="alerts-section">
+                <div class="section-title">Active Alerts</div>
+                <div id="alerts-container">
+                    <!-- Alerts will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="refresh-info" id="refresh-info">
+            <!-- Refresh info will be populated by JavaScript -->
+        </div>
+    </div>
+    
+    <script>
+        class LangChainDashboard {
+            constructor() {
+                this.refreshInterval = 30000; // 30 seconds
+                this.charts = {};
+                this.lastRefresh = null;
+                
+                this.init();
+            }
+            
+            async init() {
+                try {
+                    await this.loadDashboardData();
+                    this.startAutoRefresh();
+                } catch (error) {
+                    this.showError(error);
+                }
+            }
+            
+            async loadDashboardData() {
+                try {
+                    const response = await fetch('/api/v1/monitoring/langchain/dashboard');
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const data = await response.json();
+                    this.renderDashboard(data);
+                    this.hideLoading();
+                    
+                } catch (error) {
+                    console.error('Failed to load dashboard data:', error);
+                    this.showError(error);
+                }
+            }
+            
+            renderDashboard(data) {
+                this.renderMetrics(data.overview || {});
+                this.renderCharts(data.charts || {});
+                this.renderAlerts(data.alerts || {});
+                this.updateRefreshInfo(data.timestamp);
+                
+                this.lastRefresh = new Date();
+            }
+            
+            renderMetrics(overview) {
+                const metricsGrid = document.getElementById('metrics-grid');
+                metricsGrid.innerHTML = '';
+                
+                const metrics = [
+                    {
+                        label: 'Total Operations',
+                        value: this.formatNumber(overview.total_operations || 0),
+                        type: 'info'
+                    },
+                    {
+                        label: 'Active Operations',
+                        value: overview.active_operations || 0,
+                        type: overview.active_operations > 10 ? 'warning' : 'success'
+                    },
+                    {
+                        label: 'Tokens Saved',
+                        value: this.formatNumber(overview.total_tokens_saved || 0),
+                        type: 'success'
+                    },
+                    {
+                        label: 'System Health',
+                        value: this.capitalizeFirst(overview.system_health || 'unknown'),
+                        type: this.getHealthType(overview.system_health)
+                    },
+                    {
+                        label: 'Performance Improvement',
+                        value: `${(overview.overall_improvement_percent || 0).toFixed(1)}%`,
+                        type: overview.overall_improvement_percent > 0 ? 'success' : 'info',
+                        change: overview.overall_improvement_percent > 0 ? 'positive' : null
+                    },
+                    {
+                        label: 'Total Fallbacks',
+                        value: overview.total_fallbacks || 0,
+                        type: overview.total_fallbacks > 10 ? 'warning' : 'success'
+                    }
+                ];
+                
+                metrics.forEach(metric => {
+                    const card = this.createMetricCard(metric);
+                    metricsGrid.appendChild(card);
+                });
+            }
+            
+            createMetricCard(metric) {
+                const card = document.createElement('div');
+                card.className = `metric-card ${metric.type}`;
+                
+                let changeHtml = '';
+                if (metric.change) {
+                    changeHtml = `<div class="metric-change ${metric.change}">
+                        ${metric.change === 'positive' ? '↗' : '↘'} Improved
+                    </div>`;
+                }
+                
+                card.innerHTML = `
+                    <div class="metric-value">${metric.value}</div>
+                    <div class="metric-label">${metric.label}</div>
+                    ${changeHtml}
+                `;
+                
+                return card;
+            }
+            
+            renderCharts(charts) {
+                this.renderResponseTimeChart(charts.performance_trend || []);
+                this.renderTokenSavingsChart(charts.token_savings || []);
+            }
+            
+            renderResponseTimeChart(data) {
+                const ctx = document.getElementById('responseTimeChart').getContext('2d');
+                
+                if (this.charts.responseTime) {
+                    this.charts.responseTime.destroy();
+                }
+                
+                const labels = data.map(d => new Date(d.timestamp).toLocaleTimeString());
+                const values = data.map(d => d.avg_response_time);
+                
+                this.charts.responseTime = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Response Time (ms)',
+                            data: values,
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Response Time (ms)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        }
+                    }
+                });
+            }
+            
+            renderTokenSavingsChart(data) {
+                const ctx = document.getElementById('tokenSavingsChart').getContext('2d');
+                
+                if (this.charts.tokenSavings) {
+                    this.charts.tokenSavings.destroy();
+                }
+                
+                const labels = data.map(d => new Date(d.timestamp).toLocaleTimeString());
+                const values = data.map(d => d.value);
+                
+                this.charts.tokenSavings = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Tokens Saved',
+                            data: values,
+                            backgroundColor: '#27ae60',
+                            borderColor: '#229954',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Tokens Saved'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        }
+                    }
+                });
+            }
+            
+            renderAlerts(alerts) {
+                const container = document.getElementById('alerts-container');
+                container.innerHTML = '';
+                
+                if (!alerts.recent_alerts || alerts.recent_alerts.length === 0) {
+                    container.innerHTML = '<div style="color: #27ae60; text-align: center; padding: 1rem;">No active alerts</div>';
+                    return;
+                }
+                
+                alerts.recent_alerts.forEach(alert => {
+                    const alertElement = this.createAlertElement(alert);
+                    container.appendChild(alertElement);
+                });
+            }
+            
+            createAlertElement(alert) {
+                const element = document.createElement('div');
+                element.className = `alert-item ${alert.severity}`;
+                
+                const timeAgo = this.getTimeAgo(new Date(alert.timestamp));
+                
+                element.innerHTML = `
+                    <span class="alert-severity ${alert.severity}">${alert.severity}</span>
+                    <div class="alert-content">
+                        <div class="alert-title">${alert.title}</div>
+                        <div class="alert-message">${alert.message}</div>
+                    </div>
+                    <div class="alert-time">${timeAgo}</div>
+                `;
+                
+                return element;
+            }
+            
+            updateRefreshInfo(timestamp) {
+                const refreshInfo = document.getElementById('refresh-info');
+                const lastUpdate = new Date(timestamp).toLocaleString();
+                refreshInfo.textContent = `Last updated: ${lastUpdate} | Auto-refresh: ${this.refreshInterval / 1000}s`;
+            }
+            
+            startAutoRefresh() {
+                setInterval(() => {
+                    this.loadDashboardData();
+                }, this.refreshInterval);
+            }
+            
+            hideLoading() {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'none';
+                document.getElementById('dashboard-content').style.display = 'block';
+            }
+            
+            showError(error) {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('dashboard-content').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = `Error: ${error.message}`;
+            }
+            
+            formatNumber(num) {
+                if (num >= 1000000) {
+                    return (num / 1000000).toFixed(1) + 'M';
+                } else if (num >= 1000) {
+                    return (num / 1000).toFixed(1) + 'K';
+                }
+                return num.toString();
+            }
+            
+            capitalizeFirst(str) {
+                return str.charAt(0).toUpperCase() + str.slice(1);
+            }
+            
+            getHealthType(health) {
+                switch (health) {
+                    case 'healthy': return 'success';
+                    case 'degraded': return 'warning';
+                    case 'critical': return 'critical';
+                    default: return 'info';
+                }
+            }
+            
+            getTimeAgo(date) {
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / 60000);
+                
+                if (diffMins < 1) return 'Just now';
+                if (diffMins < 60) return `${diffMins}m ago`;
+                
+                const diffHours = Math.floor(diffMins / 60);
+                if (diffHours < 24) return `${diffHours}h ago`;
+                
+                const diffDays = Math.floor(diffHours / 24);
+                return `${diffDays}d ago`;
+            }
+        }
+        
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new LangChainDashboard();
+        });
+    </script>
+</body>
+</html>

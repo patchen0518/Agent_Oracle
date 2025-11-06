@@ -14,6 +14,17 @@ from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AI
 
 logger = logging.getLogger(__name__)
 
+# Import monitoring after logger to avoid circular imports
+try:
+    from backend.services.langchain_monitoring import (
+        langchain_monitor, 
+        OperationType
+    )
+except ImportError:
+    # Handle case where monitoring is not available
+    langchain_monitor = None
+    OperationType = None
+
 
 class OptimizationStrategy(Enum):
     """Enumeration of context optimization strategies."""
@@ -160,6 +171,20 @@ class ContextOptimizer:
         Returns:
             Optimized list of messages
         """
+        # Monitor context optimization if monitoring is available
+        if langchain_monitor and OperationType:
+            with langchain_monitor.monitor_operation(
+                OperationType.CONTEXT_OPTIMIZE,
+                self.session_id,
+                input_messages=len(messages),
+                optimization_strategy=self.config.optimization_strategy.value
+            ) as operation_id:
+                return self._perform_optimization(messages, operation_id)
+        else:
+            return self._perform_optimization(messages)
+    
+    def _perform_optimization(self, messages: List[BaseMessage], operation_id: str = None) -> List[BaseMessage]:
+        """Internal method to perform the actual optimization."""
         try:
             if not messages:
                 return messages
@@ -182,8 +207,35 @@ class ContextOptimizer:
             
             # Update statistics
             optimized_token_count = self.calculate_token_usage(optimized_messages)
+            tokens_saved = max(0, original_token_count - optimized_token_count)
             self.optimizations_performed += 1
-            self.tokens_saved += max(0, original_token_count - optimized_token_count)
+            self.tokens_saved += tokens_saved
+            
+            # Log optimization results if monitoring is available
+            if langchain_monitor and operation_id:
+                langchain_monitor.log_context_optimization(
+                    session_id=self.session_id,
+                    optimization_details={
+                        "strategy": self.config.optimization_strategy.value,
+                        "original_messages": len(messages),
+                        "optimized_messages": len(optimized_messages),
+                        "original_tokens": original_token_count,
+                        "optimized_tokens": optimized_token_count,
+                        "tokens_saved": tokens_saved,
+                        "optimization_ratio": optimized_token_count / original_token_count if original_token_count > 0 else 1.0
+                    }
+                )
+                
+                # Complete monitoring operation
+                langchain_monitor.complete_operation(
+                    operation_id,
+                    input_messages=len(messages),
+                    output_messages=len(optimized_messages),
+                    input_tokens=original_token_count,
+                    output_tokens=optimized_token_count,
+                    tokens_saved=tokens_saved,
+                    memory_strategy=self.config.optimization_strategy.value
+                )
             
             self.logger.info(
                 f"Context optimized using {self.config.optimization_strategy.value}: "
@@ -341,6 +393,19 @@ class ContextOptimizer:
         if not messages:
             return messages
         
+        # Monitor summarization if monitoring is available
+        if langchain_monitor and OperationType:
+            with langchain_monitor.monitor_operation(
+                OperationType.SUMMARIZATION,
+                self.session_id,
+                input_messages=len(messages)
+            ) as operation_id:
+                return self._perform_summarization(messages, operation_id)
+        else:
+            return self._perform_summarization(messages)
+    
+    def _perform_summarization(self, messages: List[BaseMessage], operation_id: str = None) -> List[BaseMessage]:
+        """Internal method to perform the actual summarization."""
         try:
             # Separate system messages from conversation messages
             system_messages = [msg for msg in messages if isinstance(msg, SystemMessage)]
@@ -348,6 +413,9 @@ class ContextOptimizer:
             
             if len(conversation_messages) <= self.config.messages_to_keep_after_summary:
                 return messages
+            
+            # Calculate token usage before summarization
+            original_tokens = self.calculate_token_usage(messages)
             
             # Determine messages to summarize vs keep
             messages_to_keep = self.config.messages_to_keep_after_summary
@@ -365,12 +433,42 @@ class ContextOptimizer:
             # Combine system messages, summary, and recent messages
             result = system_messages + [summary_message] + recent_messages
             
+            # Calculate token usage after summarization
+            summarized_tokens = self.calculate_token_usage(result)
+            tokens_saved = max(0, original_tokens - summarized_tokens)
+            
             # Update statistics
             self.messages_summarized += len(messages_to_summarize)
             
+            # Log summarization results if monitoring is available
+            if langchain_monitor and operation_id:
+                langchain_monitor.log_memory_strategy_usage(
+                    session_id=self.session_id,
+                    strategy="summarization",
+                    operation_details={
+                        "messages_summarized": len(messages_to_summarize),
+                        "messages_kept": len(recent_messages),
+                        "summary_length": len(summary_text),
+                        "original_tokens": original_tokens,
+                        "summarized_tokens": summarized_tokens,
+                        "tokens_saved": tokens_saved
+                    }
+                )
+                
+                # Complete monitoring operation
+                langchain_monitor.complete_operation(
+                    operation_id,
+                    input_messages=len(messages),
+                    output_messages=len(result),
+                    input_tokens=original_tokens,
+                    output_tokens=summarized_tokens,
+                    tokens_saved=tokens_saved,
+                    memory_strategy="summarization"
+                )
+            
             self.logger.info(
                 f"Applied summarization: {len(messages)} -> {len(result)} messages "
-                f"(summarized {len(messages_to_summarize)} messages)"
+                f"(summarized {len(messages_to_summarize)} messages, saved {tokens_saved} tokens)"
             )
             
             return result

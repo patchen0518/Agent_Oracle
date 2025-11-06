@@ -23,6 +23,11 @@ from backend.exceptions import (
 from backend.config.system_instructions import get_system_instruction, SYSTEM_INSTRUCTIONS
 from backend.services.context_optimizer import ContextOptimizer, ContextConfig, SummarizationMiddleware
 from backend.services.memory_fallback import MemoryFallbackManager, FallbackConfig, MemoryOperationWrapper
+from backend.services.langchain_monitoring import (
+    langchain_monitor, 
+    monitor_langchain_operation, 
+    OperationType
+)
 
 
 class LangChainChatSession:
@@ -91,46 +96,97 @@ class LangChainChatSession:
         Raises:
             AIServiceError: If the API call fails
         """
-        try:
-            # Create human message
-            human_message = HumanMessage(content=message)
+        with langchain_monitor.monitor_operation(
+            OperationType.MESSAGE_SEND,
+            self.session_id,
+            message_length=len(message),
+            conversation_length=len(self.conversation_history)
+        ) as operation_id:
             
-            # Add to conversation history with fallback support
-            self._add_message_with_fallback(human_message)
-            
-            # Apply context optimization through summarization middleware with fallback
-            optimized_context = self._get_optimized_context_with_fallback()
-            
-            # Get response from model using optimized context
-            response = self.chat_model.invoke(optimized_context)
-            
-            # Add AI response to conversation history with fallback support
-            ai_message = AIMessage(content=response.content)
-            self._add_message_with_fallback(ai_message)
-            
-            self.logger.debug(
-                f"Session {self.session_id}: Sent message and received response "
-                f"(context: {len(self.conversation_history)} -> {len(optimized_context)} messages)"
-            )
-            
-            return response.content
-            
-        except LangChainException as e:
-            self.logger.error(f"LangChain error in session {self.session_id}: {str(e)}")
-            mapped_error = LangChainExceptionMapper.map_langchain_exception(
-                e,
-                f"Failed to send message in session {self.session_id}",
-                session_id=self.session_id
-            )
-            raise mapped_error
-        except Exception as e:
-            self.logger.error(f"Failed to send message in session {self.session_id}: {str(e)}")
-            mapped_error = LangChainExceptionMapper.map_langchain_exception(
-                e,
-                f"Failed to send message in session {self.session_id}",
-                session_id=self.session_id
-            )
-            raise mapped_error
+            try:
+                # Create human message
+                human_message = HumanMessage(content=message)
+                
+                # Calculate initial token usage
+                initial_tokens = self.context_optimizer.calculate_token_usage(self.conversation_history)
+                
+                # Add to conversation history with fallback support
+                self._add_message_with_fallback(human_message)
+                
+                # Apply context optimization through summarization middleware with fallback
+                optimized_context = self._get_optimized_context_with_fallback()
+                
+                # Calculate optimized token usage
+                optimized_tokens = self.context_optimizer.calculate_token_usage(optimized_context)
+                tokens_saved = max(0, initial_tokens - optimized_tokens)
+                
+                # Get response from model using optimized context
+                response = self.chat_model.invoke(optimized_context)
+                
+                # Add AI response to conversation history with fallback support
+                ai_message = AIMessage(content=response.content)
+                self._add_message_with_fallback(ai_message)
+                
+                # Log token usage and optimization results
+                langchain_monitor.log_token_usage(
+                    session_id=self.session_id,
+                    token_details={
+                        "input_tokens": initial_tokens,
+                        "optimized_tokens": optimized_tokens,
+                        "tokens_saved": tokens_saved,
+                        "response_tokens": self.context_optimizer.calculate_token_usage([ai_message]),
+                        "optimization_applied": tokens_saved > 0
+                    }
+                )
+                
+                # Log context optimization details
+                langchain_monitor.log_context_optimization(
+                    session_id=self.session_id,
+                    optimization_details={
+                        "original_messages": len(self.conversation_history) - 1,  # Exclude new AI message
+                        "optimized_messages": len(optimized_context),
+                        "tokens_saved": tokens_saved,
+                        "optimization_strategy": self.context_optimizer.config.optimization_strategy.value,
+                        "fallback_used": self.is_in_fallback_mode()
+                    }
+                )
+                
+                # Complete operation with metrics
+                langchain_monitor.complete_operation(
+                    operation_id,
+                    input_messages=len(self.conversation_history) - 1,
+                    output_messages=len(self.conversation_history),
+                    input_tokens=initial_tokens,
+                    output_tokens=optimized_tokens,
+                    tokens_saved=tokens_saved,
+                    memory_strategy="hybrid_with_fallback",
+                    fallback_triggered=self.is_in_fallback_mode()
+                )
+                
+                self.logger.debug(
+                    f"Session {self.session_id}: Sent message and received response "
+                    f"(context: {len(self.conversation_history)} -> {len(optimized_context)} messages, "
+                    f"tokens saved: {tokens_saved})"
+                )
+                
+                return response.content
+                
+            except LangChainException as e:
+                self.logger.error(f"LangChain error in session {self.session_id}: {str(e)}")
+                mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                    e,
+                    f"Failed to send message in session {self.session_id}",
+                    session_id=self.session_id
+                )
+                raise mapped_error
+            except Exception as e:
+                self.logger.error(f"Failed to send message in session {self.session_id}: {str(e)}")
+                mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                    e,
+                    f"Failed to send message in session {self.session_id}",
+                    session_id=self.session_id
+                )
+                raise mapped_error
     
     def send_message_stream(self, message: str) -> Iterator[str]:
         """
@@ -145,48 +201,92 @@ class LangChainChatSession:
         Raises:
             AIServiceError: If the API call fails
         """
-        try:
-            # Create human message
-            human_message = HumanMessage(content=message)
+        with langchain_monitor.monitor_operation(
+            OperationType.MESSAGE_STREAM,
+            self.session_id,
+            message_length=len(message),
+            conversation_length=len(self.conversation_history)
+        ) as operation_id:
             
-            # Add to conversation history with fallback support
-            self._add_message_with_fallback(human_message)
-            
-            # Apply context optimization through summarization middleware with fallback
-            optimized_context = self._get_optimized_context_with_fallback()
-            
-            # Stream response from model using optimized context
-            response_content = ""
-            for chunk in self.chat_model.stream(optimized_context):
-                chunk_content = chunk.content
-                response_content += chunk_content
-                yield chunk_content
-            
-            # Add complete AI response to conversation history with fallback support
-            ai_message = AIMessage(content=response_content)
-            self._add_message_with_fallback(ai_message)
-            
-            self.logger.debug(
-                f"Session {self.session_id}: Sent streaming message and received response "
-                f"(context: {len(self.conversation_history)} -> {len(optimized_context)} messages)"
-            )
-            
-        except LangChainException as e:
-            self.logger.error(f"LangChain streaming error in session {self.session_id}: {str(e)}")
-            mapped_error = LangChainExceptionMapper.map_langchain_exception(
-                e,
-                f"Failed to send streaming message in session {self.session_id}",
-                session_id=self.session_id
-            )
-            raise mapped_error
-        except Exception as e:
-            self.logger.error(f"Failed to send streaming message in session {self.session_id}: {str(e)}")
-            mapped_error = LangChainExceptionMapper.map_langchain_exception(
-                e,
-                f"Failed to send streaming message in session {self.session_id}",
-                session_id=self.session_id
-            )
-            raise mapped_error
+            try:
+                # Create human message
+                human_message = HumanMessage(content=message)
+                
+                # Calculate initial token usage
+                initial_tokens = self.context_optimizer.calculate_token_usage(self.conversation_history)
+                
+                # Add to conversation history with fallback support
+                self._add_message_with_fallback(human_message)
+                
+                # Apply context optimization through summarization middleware with fallback
+                optimized_context = self._get_optimized_context_with_fallback()
+                
+                # Calculate optimized token usage
+                optimized_tokens = self.context_optimizer.calculate_token_usage(optimized_context)
+                tokens_saved = max(0, initial_tokens - optimized_tokens)
+                
+                # Stream response from model using optimized context
+                response_content = ""
+                chunk_count = 0
+                
+                for chunk in self.chat_model.stream(optimized_context):
+                    chunk_content = chunk.content
+                    response_content += chunk_content
+                    chunk_count += 1
+                    yield chunk_content
+                
+                # Add complete AI response to conversation history with fallback support
+                ai_message = AIMessage(content=response_content)
+                self._add_message_with_fallback(ai_message)
+                
+                # Log streaming metrics
+                langchain_monitor.log_token_usage(
+                    session_id=self.session_id,
+                    token_details={
+                        "input_tokens": initial_tokens,
+                        "optimized_tokens": optimized_tokens,
+                        "tokens_saved": tokens_saved,
+                        "response_tokens": self.context_optimizer.calculate_token_usage([ai_message]),
+                        "streaming_chunks": chunk_count,
+                        "response_length": len(response_content)
+                    }
+                )
+                
+                # Complete operation with streaming metrics
+                langchain_monitor.complete_operation(
+                    operation_id,
+                    input_messages=len(self.conversation_history) - 1,
+                    output_messages=len(self.conversation_history),
+                    input_tokens=initial_tokens,
+                    output_tokens=optimized_tokens,
+                    tokens_saved=tokens_saved,
+                    memory_strategy="hybrid_with_fallback",
+                    fallback_triggered=self.is_in_fallback_mode(),
+                    streaming_chunks=chunk_count
+                )
+                
+                self.logger.debug(
+                    f"Session {self.session_id}: Sent streaming message and received response "
+                    f"(context: {len(self.conversation_history)} -> {len(optimized_context)} messages, "
+                    f"chunks: {chunk_count}, tokens saved: {tokens_saved})"
+                )
+                
+            except LangChainException as e:
+                self.logger.error(f"LangChain streaming error in session {self.session_id}: {str(e)}")
+                mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                    e,
+                    f"Failed to send streaming message in session {self.session_id}",
+                    session_id=self.session_id
+                )
+                raise mapped_error
+            except Exception as e:
+                self.logger.error(f"Failed to send streaming message in session {self.session_id}: {str(e)}")
+                mapped_error = LangChainExceptionMapper.map_langchain_exception(
+                    e,
+                    f"Failed to send streaming message in session {self.session_id}",
+                    session_id=self.session_id
+                )
+                raise mapped_error
     
     def get_conversation_history(self) -> List[BaseMessage]:
         """
