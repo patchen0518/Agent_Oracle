@@ -15,6 +15,7 @@ from langchain_core.exceptions import LangChainException
 from backend.utils.logging_config import get_logger
 from backend.exceptions import AIServiceError
 from backend.config.system_instructions import get_system_instruction, SYSTEM_INSTRUCTIONS
+from backend.services.context_optimizer import ContextOptimizer, ContextConfig, SummarizationMiddleware
 
 
 class LangChainChatSession:
@@ -25,7 +26,13 @@ class LangChainChatSession:
     responses using LangChain's message objects and ChatGoogleGenerativeAI.
     """
     
-    def __init__(self, chat_model: ChatGoogleGenerativeAI, session_id: Optional[int] = None, system_instruction: Optional[str] = None):
+    def __init__(
+        self, 
+        chat_model: ChatGoogleGenerativeAI, 
+        session_id: Optional[int] = None, 
+        system_instruction: Optional[str] = None,
+        context_optimizer: Optional[ContextOptimizer] = None
+    ):
         """
         Initialize LangChain chat session wrapper.
         
@@ -34,10 +41,22 @@ class LangChainChatSession:
             session_id: Optional session ID for tracking
             system_instruction: Optional system instruction for AI personality.
                               Can be a full instruction text or a type name (e.g., "professional", "technical")
+            context_optimizer: Optional context optimizer for intelligent context management
         """
         self.chat_model = chat_model
         self.session_id = session_id
         self.logger = get_logger("langchain_chat_session")
+        
+        # Initialize context optimizer
+        if context_optimizer:
+            self.context_optimizer = context_optimizer
+        else:
+            # Create default context optimizer
+            context_config = ContextConfig()
+            self.context_optimizer = ContextOptimizer(config=context_config, session_id=session_id)
+        
+        # Initialize summarization middleware
+        self.summarization_middleware = SummarizationMiddleware(self.context_optimizer)
         
         # Initialize conversation history with system message if provided
         self.conversation_history: List[BaseMessage] = []
@@ -45,10 +64,12 @@ class LangChainChatSession:
         if system_instruction:
             self._process_system_instruction(system_instruction)
             self.logger.debug(f"Added system instruction to session {session_id}")
+        
+        self.logger.info(f"LangChain chat session initialized with context optimization for session {session_id}")
     
     def send_message(self, message: str) -> str:
         """
-        Send a message to the chat session and get response.
+        Send a message to the chat session and get response with context optimization.
         
         Args:
             message: The user message to send
@@ -66,14 +87,20 @@ class LangChainChatSession:
             # Add to conversation history
             self.conversation_history.append(human_message)
             
-            # Get response from model using conversation history
-            response = self.chat_model.invoke(self.conversation_history)
+            # Apply context optimization through summarization middleware
+            optimized_context = self.summarization_middleware.process_messages(self.conversation_history)
+            
+            # Get response from model using optimized context
+            response = self.chat_model.invoke(optimized_context)
             
             # Add AI response to conversation history
             ai_message = AIMessage(content=response.content)
             self.conversation_history.append(ai_message)
             
-            self.logger.debug(f"Session {self.session_id}: Sent message and received response")
+            self.logger.debug(
+                f"Session {self.session_id}: Sent message and received response "
+                f"(context: {len(self.conversation_history)} -> {len(optimized_context)} messages)"
+            )
             
             return response.content
             
@@ -86,7 +113,7 @@ class LangChainChatSession:
     
     def send_message_stream(self, message: str) -> Iterator[str]:
         """
-        Send a message and get streaming response.
+        Send a message and get streaming response with context optimization.
         
         Args:
             message: The user message to send
@@ -104,9 +131,12 @@ class LangChainChatSession:
             # Add to conversation history
             self.conversation_history.append(human_message)
             
-            # Stream response from model
+            # Apply context optimization through summarization middleware
+            optimized_context = self.summarization_middleware.process_messages(self.conversation_history)
+            
+            # Stream response from model using optimized context
             response_content = ""
-            for chunk in self.chat_model.stream(self.conversation_history):
+            for chunk in self.chat_model.stream(optimized_context):
                 chunk_content = chunk.content
                 response_content += chunk_content
                 yield chunk_content
@@ -115,7 +145,10 @@ class LangChainChatSession:
             ai_message = AIMessage(content=response_content)
             self.conversation_history.append(ai_message)
             
-            self.logger.debug(f"Session {self.session_id}: Sent streaming message and received response")
+            self.logger.debug(
+                f"Session {self.session_id}: Sent streaming message and received response "
+                f"(context: {len(self.conversation_history)} -> {len(optimized_context)} messages)"
+            )
             
         except LangChainException as e:
             self.logger.error(f"LangChain streaming error in session {self.session_id}: {str(e)}")
@@ -292,4 +325,78 @@ class LangChainChatSession:
         Returns:
             bool: True if a system instruction is present
         """
-        return any(isinstance(msg, SystemMessage) for msg in self.conversation_history)
+        return any(isinstance(msg, SystemMessage) for msg in self.conversation_history)    
+
+    def get_context_optimizer(self) -> ContextOptimizer:
+        """
+        Get the context optimizer instance.
+        
+        Returns:
+            ContextOptimizer: The context optimizer used by this session
+        """
+        return self.context_optimizer
+    
+    def get_summarization_middleware(self) -> SummarizationMiddleware:
+        """
+        Get the summarization middleware instance.
+        
+        Returns:
+            SummarizationMiddleware: The summarization middleware used by this session
+        """
+        return self.summarization_middleware
+    
+    def get_optimization_stats(self) -> Dict[str, Any]:
+        """
+        Get context optimization statistics for this session.
+        
+        Returns:
+            Dictionary containing optimization statistics
+        """
+        optimizer_stats = self.context_optimizer.get_optimization_stats()
+        middleware_stats = self.summarization_middleware.get_middleware_stats()
+        
+        return {
+            "session_id": self.session_id,
+            "conversation_length": len(self.conversation_history),
+            "optimizer": optimizer_stats,
+            "middleware": middleware_stats
+        }
+    
+    def update_context_config(self, config: ContextConfig) -> None:
+        """
+        Update the context optimization configuration.
+        
+        Args:
+            config: New context configuration to apply
+        """
+        self.context_optimizer.update_config(config)
+        self.logger.info(f"Session {self.session_id}: Updated context optimization configuration")
+    
+    def reset_optimization_stats(self) -> None:
+        """Reset optimization statistics for this session."""
+        self.context_optimizer.reset_stats()
+        self.summarization_middleware.reset_stats()
+        self.logger.debug(f"Session {self.session_id}: Reset optimization statistics")
+    
+    def get_token_usage_details(self) -> Dict[str, Any]:
+        """
+        Get detailed token usage information for the current conversation.
+        
+        Returns:
+            Dictionary with detailed token usage breakdown
+        """
+        return self.context_optimizer.calculate_detailed_token_usage(self.conversation_history)
+    
+    def force_context_optimization(self) -> List[BaseMessage]:
+        """
+        Force context optimization on the current conversation history.
+        
+        Returns:
+            Optimized conversation context
+        """
+        optimized_context = self.context_optimizer.optimize_context(self.conversation_history)
+        self.logger.info(
+            f"Session {self.session_id}: Forced context optimization "
+            f"({len(self.conversation_history)} -> {len(optimized_context)} messages)"
+        )
+        return optimized_context

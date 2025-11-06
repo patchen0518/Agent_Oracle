@@ -137,10 +137,18 @@ class LangChainClient:
         
         # Create new LangChain chat session
         try:
+            # Import here to avoid circular imports
+            from backend.services.context_optimizer import ContextOptimizer, ContextConfig
+            
+            # Create context optimizer for this session
+            context_config = ContextConfig()
+            context_optimizer = ContextOptimizer(config=context_config, session_id=session_id)
+            
             chat_session = LangChainChatSession(
                 chat_model=self.chat_model,
                 session_id=session_id,
-                system_instruction=system_instruction
+                system_instruction=system_instruction,
+                context_optimizer=context_optimizer
             )
             
             # Restore recent conversation context if provided
@@ -206,10 +214,18 @@ class LangChainClient:
         from backend.services.langchain_chat_session import LangChainChatSession
         
         try:
+            # Import here to avoid circular imports
+            from backend.services.context_optimizer import ContextOptimizer, ContextConfig
+            
+            # Create context optimizer for standalone session
+            context_config = ContextConfig()
+            context_optimizer = ContextOptimizer(config=context_config, session_id=None)
+            
             return LangChainChatSession(
                 chat_model=self.chat_model,
                 session_id=None,  # Standalone session
-                system_instruction=system_instruction
+                system_instruction=system_instruction,
+                context_optimizer=context_optimizer
             )
         except Exception as e:
             raise AIServiceError(f"Failed to create standalone chat session: {str(e)}", e)
