@@ -84,15 +84,7 @@ class SessionChatService:
                 raise ValidationError("Message content cannot be empty")
             
             # 2. Get recent messages for context restoration with intelligent selection
-            recent_messages = await self._get_messages_for_context_restoration(session_id)
-            
-            # Convert database messages to format expected by Gemini client
-            conversation_history = []
-            for msg in recent_messages:
-                conversation_history.append({
-                    "role": msg.role,
-                    "content": msg.content
-                })
+            conversation_history = await self._get_messages_for_context_restoration(session_id)
             
             # 3. Get or create LangChain chat session with recent conversation history
             system_instruction = get_system_instruction()
@@ -231,18 +223,30 @@ class SessionChatService:
             # Convert database message objects to dictionaries for LangChain restoration
             conversation_history = []
             for msg in recent_messages:
-                # Ensure we have the required fields
-                if hasattr(msg, 'role') and hasattr(msg, 'content'):
-                    message_dict = {
-                        "role": msg.role,
-                        "content": msg.content
-                    }
-                    
-                    # Add optional metadata if available
-                    if hasattr(msg, 'message_metadata') and msg.message_metadata:
-                        message_dict["metadata"] = msg.message_metadata
-                    
-                    conversation_history.append(message_dict)
+                # Handle both Pydantic objects and dictionaries
+                if isinstance(msg, dict):
+                    # Already a dictionary
+                    if "role" in msg and "content" in msg:
+                        message_dict = {
+                            "role": msg["role"],
+                            "content": msg["content"]
+                        }
+                        if "message_metadata" in msg and msg["message_metadata"]:
+                            message_dict["metadata"] = msg["message_metadata"]
+                        conversation_history.append(message_dict)
+                else:
+                    # Pydantic object - access attributes
+                    if hasattr(msg, 'role') and hasattr(msg, 'content'):
+                        message_dict = {
+                            "role": msg.role,
+                            "content": msg.content
+                        }
+                        
+                        # Add optional metadata if available
+                        if hasattr(msg, 'message_metadata') and msg.message_metadata:
+                            message_dict["metadata"] = msg.message_metadata
+                        
+                        conversation_history.append(message_dict)
             
             self.logger.debug(
                 f"Loaded {len(conversation_history)} messages for context restoration "
