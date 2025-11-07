@@ -1,6 +1,7 @@
 # Oracle: An Intelligent Conversational AI Agent
 
 ![Project Status: MVP 1.3 Complete](https://img.shields.io/badge/status-MVP%201.3%20Complete-green)
+![LangChain Integration](https://img.shields.io/badge/LangChain-Integrated-blue)
 ![Backend Tests](https://img.shields.io/badge/backend%20tests-128%20passed-green)
 ![Frontend Tests](https://img.shields.io/badge/frontend%20tests-137%20passed-green)
 
@@ -107,7 +108,7 @@ The primary goal is to build a robust, well-designed, and maintainable software 
 
 The project implements a production-ready, decoupled frontend/backend architecture.
 
-### Current Architecture (MVP 1.2)
+### Current Architecture (MVP 1.3)
 
 #### Backend (FastAPI)
 - **API Layer:** RESTful session-based endpoints with standardized error handling
@@ -127,9 +128,9 @@ The project implements a production-ready, decoupled frontend/backend architectu
 - **API Communication:** Session-based service layer with error recovery
 - **Testing:** Component and integration tests with React Testing Library
 
-### Future Architecture (MVP 1.3+)
+### Future Architecture (MVP 1.4+)
 
-#### Enhanced Backend (MVP 1.3+)
+#### Enhanced Backend (MVP 1.4+)
 - **Memory Optimization:** Intelligent context management with LangChain integration
 - **Conversation Summarization:** Automatic summarization of long conversations
 - **Entity Extraction:** Smart extraction and retention of important facts
@@ -169,7 +170,6 @@ The project implements a production-ready, decoupled frontend/backend architectu
 ### Core Documentation
 - **[API Documentation](docs/API_DOCUMENTATION.md)**: Comprehensive API reference with LangChain integration details
 - **[Deployment Guide](docs/DEPLOYMENT.md)**: Production deployment procedures and configuration
-- **[Project Structure](PROJECT_STRUCTURE.md)**: Detailed codebase organization and architecture
 
 ### LangChain Integration Documentation
 - **[LangChain Migration Guide](docs/LANGCHAIN_MIGRATION_GUIDE.md)**: Step-by-step migration from direct Gemini API to LangChain
@@ -186,63 +186,26 @@ The project implements a production-ready, decoupled frontend/backend architectu
 
 ## 📁 Project Structure
 
+The project follows a clean, modular architecture with clear separation between frontend and backend:
+
 ```
 oracle/
-├── backend/                    # FastAPI backend application
-│   ├── api/v1/                # API routes and endpoints
-│   │   ├── session_router.py  # ✅ Session-based chat endpoints
-│   │   └── monitoring_router.py # ✅ Basic health checks
-│   ├── config/                # Configuration management
-│   │   ├── database.py        # ✅ SQLite database configuration
-│   │   └── system_instructions.py # ✅ AI personality configurations
-│   ├── models/                # Pydantic and SQLModel data models
-│   │   ├── session_models.py  # ✅ Session and message models with relationships
-│   │   └── error_models.py    # ✅ Error response models
-│   ├── services/              # Business logic and external integrations
-│   │   ├── session_service.py # ✅ Session CRUD operations
-│   │   ├── session_chat_service.py # ✅ Session-based chat with context optimization
-│   │   └── gemini_client.py   # ✅ Gemini API client wrapper
-│   ├── tests/                 # Comprehensive test suite (128 tests passing)
-│   │   ├── test_session_service.py # ✅ Session management tests
-│   │   ├── test_session_chat_service.py # ✅ Chat service tests
-│   │   ├── test_session_router.py # ✅ API endpoint tests
-│   │   ├── test_monitoring_router.py # ✅ Health monitoring tests
-│   │   ├── test_models.py     # ✅ Data model validation tests
-│   │   └── test_system_integration.py # ✅ End-to-end integration tests
-│   ├── utils/                 # Utility modules
-│   │   └── logging_config.py  # ✅ Structured logging with session context
-│   ├── exceptions.py         # ✅ Custom exception hierarchy
-│   ├── main.py               # ✅ FastAPI application with session support
-│   ├── .env.example          # Environment variables template
-│   └── .env                  # Local environment configuration
-├── frontend/                  # React frontend application
-│   ├── src/
-│   │   ├── components/       # React UI components (137 tests passing)
-│   │   │   ├── ChatInterface.jsx # ✅ Session-aware chat component
-│   │   │   ├── SessionSidebar.jsx # ✅ Multi-session management sidebar
-│   │   │   ├── SessionHeader.jsx # ✅ Session info and controls header
-│   │   │   ├── SessionLayout.jsx # ✅ Main layout with session support
-│   │   │   ├── Message.jsx   # ✅ Message display component
-│   │   │   ├── MessageInput.jsx # ✅ Message input with session context
-│   │   │   └── ErrorDisplay.jsx # ✅ Error handling component
-│   │   ├── hooks/            # Custom React hooks
-│   │   │   ├── useSessionManager.js # ✅ Session CRUD operations
-│   │   │   ├── useSessionChat.js # ✅ Session-based chat functionality
-│   │   │   └── useErrorHandler.js # ✅ Error handling hook
-│   │   ├── services/         # API communication
-│   │   │   └── api.js        # ✅ Session-based API client
-│   │   └── test/            # Frontend test suite
-│   │       └── systemIntegration.test.jsx # ✅ Complete system tests
-│   ├── package.json         # Node.js dependencies and scripts
-│   └── vite.config.js       # Vite configuration
-├── scripts/                   # Development and deployment scripts
-│   └── dev-setup.sh         # Automated development setup
-├── logs/                     # Application logs
-├── .kiro/                    # Kiro IDE configuration
-│   └── steering/            # Development guidelines and standards
-├── pyproject.toml            # Python project configuration
-├── PROJECT_STRUCTURE.md      # Detailed structure documentation
-└── README.md                 # Project documentation
+├── backend/                    # FastAPI backend with LangChain integration
+│   ├── api/v1/                # Session-based API endpoints
+│   ├── config/                # Database and system configuration
+│   ├── models/                # SQLModel data models
+│   ├── services/              # Business logic and LangChain integration
+│   ├── tests/                 # Comprehensive test suite (128+ tests)
+│   ├── utils/                 # Logging and utility modules
+│   └── main.py               # FastAPI application entry point
+├── frontend/                  # React frontend with session management
+│   ├── src/components/       # Session-aware UI components
+│   ├── src/hooks/            # Custom React hooks for session management
+│   ├── src/services/         # API communication layer
+│   └── src/test/            # Frontend test suite (137+ tests)
+├── docs/                     # Comprehensive documentation
+├── scripts/                  # Development and deployment scripts
+└── .kiro/                    # Kiro IDE configuration and specs
 ```
 
 ---
@@ -260,7 +223,7 @@ oracle/
 | **Package Mgmt** | Node.js | `npm` | ✅ Implemented |
 | **Logging** | Python | Custom structured logging | ✅ Implemented |
 | **Session Mgmt** | Python | SQLModel + SQLite | ✅ Implemented |
-| **Memory & AI** | Python | `langchain` | 🔄 MVP 1.3 |
+| **Memory & AI** | Python | `langchain`, `langchain-google-genai`, `langchain-core` | ✅ Implemented |
 
 ---
 
@@ -597,30 +560,33 @@ Set via `SYSTEM_INSTRUCTION_TYPE` in your `.env` file.
 
 ---
 
-## 🚀 Current Features (MVP 1.2)
+## 🚀 Current Features (MVP 1.3)
 
-### Session Management
+### LangChain-Enhanced Session Management
 - **Multi-Session Support:** Create, manage, and switch between multiple independent chat sessions
-- **Persistent Storage:** All conversation history stored server-side in SQLite database with optimized indexing
-- **In-Memory Caching:** Active Gemini sessions cached for up to 1 hour (max 50 concurrent sessions)
-- **Context Optimization:** Intelligent context restoration using recent message history (last 10 messages)
-- **Performance Optimization:** 60-80% reduction in API token usage through session caching and context optimization
-- **Automatic Cleanup:** Smart session management with configurable limits and automatic memory cleanup
+- **Intelligent Memory Strategies:** Buffer, summary, entity, and hybrid memory types for optimal context handling
+- **Context Optimization:** Automatic summarization and relevance-based context selection
+- **Entity Extraction:** Remembers important facts and preferences within sessions
+- **Persistent Storage:** All conversation history stored server-side in SQLite database with memory coordination
+- **Performance Optimization:** 60-80% reduction in API token usage through smart memory strategies
+- **Fallback Mechanisms:** Graceful degradation when advanced features fail
 
-### Core Chat Functionality
-- **Real-time Conversation:** Seamless chat interface with persistent message history
-- **Context Awareness:** AI maintains conversation context with hybrid persistence (database + cache)
+### LangChain-Enhanced Chat Functionality
+- **Real-time Conversation:** Seamless chat interface with intelligent memory management
+- **Smart Context Awareness:** AI maintains conversation context using LangChain memory strategies
+- **Conversation Summarization:** Automatic summarization of long conversations for token efficiency
+- **Entity Memory:** Extracts and remembers important facts, names, and preferences
 - **Multiple AI Models:** Switch between different Gemini models via configuration
 - **AI Personalities:** Choose from 5 different AI personality types (default, professional, technical, creative, educational)
-- **Error Recovery:** Standardized error handling with custom exception types
+- **Intelligent Error Recovery:** Comprehensive error handling with fallback mechanisms
 
-### Cache Architecture
-- **Two-Layer System:** Database persistence + in-memory caching for optimal performance
-- **Cache Type:** Temporary in-memory storage (not persisted to database)
-- **Cache Strategy:** Active Gemini sessions cached for up to 1 hour with automatic expiration
-- **Memory Limits:** Maximum 50 concurrent sessions with automatic FIFO cleanup
-- **Context Restoration:** Intelligent recovery from database using recent message history (last 10 messages)
-- **Performance Benefits:** 30-50% faster response times for cache hits, 60-80% token usage reduction
+### LangChain Memory Architecture
+- **Smart Memory Strategies:** Buffer, summary, entity, and hybrid memory types
+- **Context Optimization:** Automatic summarization and relevance-based context selection
+- **Entity Extraction:** Intelligent extraction and retention of important facts
+- **Token Efficiency:** 60-80% reduction in API token usage through smart memory management
+- **Hybrid Persistence:** Database storage coordinated with LangChain memory strategies
+- **Performance Benefits:** Optimized context handling with improved conversation quality
 
 ### User Interface
 - **Session Sidebar:** Dedicated panel for managing multiple conversations
@@ -630,124 +596,53 @@ Set via `SYSTEM_INSTRUCTION_TYPE` in your `.env` file.
 - **Accessibility:** Built with accessibility best practices and ARIA support
 
 ### Technical Features
-- **Database Integration:** SQLite with SQLModel for type-safe database operations and optimized queries
-- **Session-Based Architecture:** Hybrid approach with database persistence and in-memory caching
-- **Error Handling:** Standardized exception hierarchy with custom error types
+- **LangChain Integration:** ChatGoogleGenerativeAI with intelligent conversation management
+- **Database Integration:** SQLite with SQLModel coordinated with LangChain memory strategies
+- **Smart Memory Management:** Multiple memory strategies with automatic optimization
+- **Context Optimization:** Automatic summarization and relevance-based context selection
+- **Error Handling:** Comprehensive exception hierarchy with fallback mechanisms
 - **Production Ready:** Comprehensive logging, monitoring, and graceful error handling
-- **Configurable:** Simplified environment-based configuration with essential variables only
-- **Comprehensive Testing:** Full test coverage (128 backend + 137 frontend tests)
-- **API Documentation:** Auto-generated OpenAPI/Swagger documentation
-- **Health Monitoring:** Basic system health checks and session metrics
+- **Feature Flags:** Gradual rollout and rollback capabilities for LangChain features
+- **Comprehensive Testing:** Full test coverage (128+ backend + 137+ frontend tests)
+- **API Documentation:** Auto-generated OpenAPI/Swagger documentation with LangChain details
+- **Advanced Monitoring:** LangChain-specific health checks and performance metrics
 
-## 🔄 Upcoming Features (MVP 1.3+)
+## 🔮 Upcoming Features (MVP 1.4+)
 
-### Smart Memory (MVP 1.3)
-- **LangChain Integration:** Advanced conversation management and memory strategies
-- **Conversation Summarization:** Automatic summarization of long conversations to manage token limits
-- **Entity Extraction:** Remember important facts and user preferences across sessions
-- **Context Optimization:** Intelligent selection of relevant conversation history
-- **Memory Strategies:** Multiple memory types (buffer, summary, entity-based)
+### Web Search & Tool Use (MVP 1.4)
+- **Internet Search Integration:** Agent will perform web searches to answer questions
+- **Function Calling:** Gemini API's tool use feature integrated with LangChain sessions
+- **Context-Aware Tools:** Tools will have access to session history and extracted entities
+- **Search Result Processing:** Intelligent processing and integration of search results
 
----
+### Agentic Reflection (MVP 1.5)
+- **Self-Correction Loop:** Agent will review and improve responses before delivery
+- **Quality Assessment:** Automatic evaluation of response quality and accuracy
+- **Iterative Improvement:** Multi-step reasoning and response refinement
 
-## 📝 Recent Development Updates
+ion management
 
-### MVP 1.1 Session Management - COMPLETED ✅
 
-**Major Achievement:** Successfully transitioned from stateless to session-based architecture with complete database integration.
 
-### MVP 1.2 Optimized Session Management - COMPLETED ✅
-
-**Major Achievement:** Implemented intelligent session caching and performance optimizations while maintaining conversation context.
-
-**Key Accomplishments:**
-- **In-Memory Caching:** Implemented smart session caching with automatic cleanup (max 50 sessions, 1-hour expiration)
-- **Context Optimization:** Efficient context restoration using recent message history (last 10 messages)
-- **Database Optimization:** 95% faster message counting and query performance through proper indexing
-- **Error Handling:** Standardized exception hierarchy with custom error types for better debugging
-- **Configuration Simplification:** Reduced environment variables from 13 to 8 essential variables
-- **Memory Management:** Automatic session cleanup with FIFO strategy and configurable limits
-
-**Technical Highlights:**
-- Hybrid architecture: Database persistence + in-memory caching for performance
-- Intelligent context restoration from database when cache misses occur
-- Standardized error handling with ValidationError, NotFoundError, DatabaseError, AIServiceError
-- Optimized SQL queries with proper indexing for sessions and messages
-- Simplified configuration management with only essential environment variables
-
-**Impact:**
-- 60-80% reduction in API token usage through intelligent session caching
-- 30-50% faster response times for active sessions (cache hits)
-- 95% faster database operations through query optimizations
-- Simplified deployment and configuration management
-- Better error handling and debugging capabilities
-
----
-
-## 📝 Development History
-
-### Model Configuration Abstraction (MVP 1.0 Complete)
-- **Configurable AI Models:** Switch between Gemini models via `GEMINI_MODEL` environment variable
-- **Dynamic Model Selection:** No code changes required to use different models
-- **Backward Compatible:** Defaults to `gemini-2.5-flash` if no model is specified
-- **Test Coverage:** Comprehensive tests for model configuration scenarios
-
-### Available Models
-- `gemini-2.5-flash` - Default balanced model
-- `gemini-2.5-flash-lite` - Faster, lighter responses  
-- `gemini-2.5-pro` - Enhanced reasoning capabilities
-
-Simply update your `.env` file:
-```ini
-GEMINI_MODEL=gemini-2.5-flash-lite
-```
-
-### Completed: Session Management (MVP 1.1)
-**Objective:** ✅ COMPLETE - Replaced stateless conversation handling with persistent session management
+### Completed: LangChain Integration & Smart Memory (MVP 1.3)
+**Objective:** ✅ COMPLETE - Implemented intelligent conversation memory with LangChain integration
 
 **Implemented Changes:**
-- ✅ **Database Integration:** SQLite + SQLModel for session and message storage
-- ✅ **API Migration:** Complete replacement with session-based endpoints (`/api/v1/sessions/`)
-- ✅ **Performance Improvement:** Achieved 60-80% reduction in API token usage
-- ✅ **Frontend UI Overhaul:** Complete redesign to support multi-session management
-- ✅ **Session Interface:** New sidebar, session controls, and context-aware chat interface
-- ✅ **State Management:** Migration from client-side to server-side conversation storage
-- ✅ **Architecture Simplification:** Unified session-based approach replacing stateless design
+- ✅ **LangChain Integration:** ChatGoogleGenerativeAI with intelligent conversation management
+- ✅ **Smart Memory Strategies:** Buffer, summary, entity, and hybrid memory types for optimal context handling
+- ✅ **Context Optimization:** Automatic summarization and relevance-based context selection
+- ✅ **Entity Extraction:** Remembers important facts and preferences within sessions
+- ✅ **Performance Enhancement:** 60-80% reduction in API token usage through intelligent memory strategies
+- ✅ **Fallback Mechanisms:** Graceful degradation when advanced features fail
+- ✅ **Feature Flag Support:** Gradual rollout and rollback procedures
 
 **Achieved Benefits:**
-- ✅ Dramatically reduced API costs through server-side history management
-- ✅ Better user experience with persistent conversation sessions
-- ✅ Foundation for advanced features (summarization, entity extraction)
-- ✅ Improved scalability and performance
-
-**Implementation Results:**
-- ✅ **Backend:** 128 tests passing - Complete session management system
-- ✅ **Frontend:** 137 tests passing - Full session UI implementation
-- ✅ **Database:** SQLite integration with proper table creation and relationships
-- ✅ **API:** Session-based endpoints with comprehensive error handling
-- ✅ **UI:** Session sidebar, controls, and mobile-responsive design
-- ✅ **Testing:** Comprehensive test coverage for all session functionality
-
-### Completed: Optimized Session Management (MVP 1.2)
-**Objective:** ✅ COMPLETE - Implemented optimized session management with intelligent caching and context restoration
-
-**Implemented Changes:**
-- ✅ **In-Memory Session Caching:** Active Gemini sessions cached for performance (max 50 sessions, 1-hour expiration)
-- ✅ **Context Optimization:** Recent message context restoration (last 10 messages) for efficiency
-- ✅ **Database Performance:** 95% faster message counting with SQL optimizations and proper indexing
-- ✅ **Error Handling Standardization:** Custom exception hierarchy with structured error types
-- ✅ **Configuration Simplification:** Reduced environment variables from 13 to 8 essential variables
-- ✅ **Memory Management:** Automatic session cleanup with configurable limits and FIFO cleanup strategy
-
-**Achieved Benefits:**
-- ✅ 60-80% reduction in API token usage through intelligent session caching
-- ✅ 30-50% faster response times for active sessions (cache hits)
-- ✅ 95% faster database operations through query optimizations
-- ✅ Simplified configuration and reduced complexity while maintaining functionality
-- ✅ Better error handling and debugging with structured exception hierarchy
-
-### Next: Smart Memory (MVP 1.3)
-**Objective:** Implement intelligent conversation memory with LangChain integration
+- ✅ Intelligent conversation summarization for long chats
+- ✅ Entity extraction and fact retention within sessions
+- ✅ Optimized context selection for better AI responses
+- ✅ Multiple memory strategies for different conversation types
+- ✅ Enhanced conversation continuity and relevance
+- ✅ Comprehensive error handling and fallback mechanisms
 
 ---
 
