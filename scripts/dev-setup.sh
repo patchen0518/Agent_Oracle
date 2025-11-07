@@ -182,10 +182,11 @@ echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 print_success "🚀 Oracle Chat Development Environment is Ready!"
 echo
-echo "  📱 Frontend:  http://localhost:5173"
-echo "  🔧 Backend:   http://localhost:8000"
-echo "  📚 API Docs:  http://localhost:8000/docs"
-echo "  ❤️  Health:    http://localhost:8000/health"
+echo "  📱 Frontend:            http://localhost:5173"
+echo "  🔧 Backend:             http://localhost:8000"
+echo "  📚 API Docs:            http://localhost:8000/docs"
+echo "  ❤️  Health:              http://localhost:8000/health"
+echo "  📊 LangChain Dashboard: http://localhost:8000/api/v1/monitoring/langchain/dashboard/view"
 echo
 echo "  📋 Logs:"
 echo "    Backend:  tail -f logs/backend.log"
