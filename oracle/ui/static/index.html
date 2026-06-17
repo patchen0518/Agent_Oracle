@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oracle</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header id="header">
+    <div id="logo">⬡ Oracle</div>
+    <div id="mode-badge" class="badge badge-default">DEFAULT</div>
+    <div id="context-bar" title="Token usage">
+      <span id="ctx-text">ctx: – / –</span>
+      <div id="ctx-progress"><div id="ctx-fill"></div></div>
+    </div>
+    <button id="stop-btn" class="btn-stop" title="Stop current turn" disabled>■ Stop</button>
+  </header>
+
+  <div id="reconnect-banner" class="hidden">
+    Reconnecting… <span id="reconnect-count"></span>
+  </div>
+  <div id="lost-banner" class="hidden">
+    Connection lost. <button onclick="location.reload()">Retry</button>
+  </div>
+
+  <main id="chat"></main>
+
+  <div id="input-area">
+    <textarea
+      id="input"
+      placeholder="Ask Oracle something… (Enter to send, Shift+Enter for newline)"
+      rows="3"
+      autofocus
+    ></textarea>
+    <button id="send-btn" class="btn-send">Send</button>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
