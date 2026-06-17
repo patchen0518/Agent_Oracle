@@ -10,9 +10,6 @@ import yaml
 
 log = logging.getLogger(__name__)
 
-_GLOBAL_SKILLS_DIR = Path.home() / ".oracle" / "skills"
-_PROJECT_SKILLS_DIR = Path(".oracle") / "skills"
-
 
 @dataclass
 class Skill:
@@ -30,12 +27,8 @@ class SkillRegistry:
     def load(self) -> None:
         """Discover and parse skills. Project-local skills override global ones."""
         self._skills.clear()
-        self._load_dir(_GLOBAL_SKILLS_DIR, "global")
+        self._load_dir(Path.home() / ".oracle" / "skills", "global")
         self._load_dir(Path.cwd() / ".oracle" / "skills", "project")
-
-    def reload(self) -> None:
-        """Hot-reload skills without restarting Oracle."""
-        self.load()
 
     def _load_dir(self, path: Path, source: str) -> None:
         if not path.exists():

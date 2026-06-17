@@ -48,16 +48,6 @@ _AT_MAX_SCAN = 2000
 _AT_MAX_RESULTS = 30
 
 
-def _short_cwd() -> str:
-    cwd = Path.cwd()
-    home = Path.home()
-    try:
-        rel = cwd.relative_to(home)
-        return "~" if rel == Path(".") else f"~/{rel}"
-    except ValueError:
-        return str(cwd)
-
-
 def _expand_at_mentions(content: str) -> str:
     """Replace @path with path + file contents so the LLM sees the file."""
     cwd = Path.cwd().resolve()
@@ -255,7 +245,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
     # Send initial state
     await websocket.send_json({"type": "mode", "mode": config.mode})
-    await websocket.send_json({"type": "cwd", "path": _short_cwd()})
+    _cwd = Path.cwd()
+    _cwd_str = str(_cwd).replace(str(Path.home()), "~", 1) if _cwd.is_relative_to(Path.home()) else str(_cwd)
+    await websocket.send_json({"type": "cwd", "path": _cwd_str})
     await websocket.send_json({"type": "model_info", "model": config.model})
 
     try:
@@ -365,7 +357,6 @@ async def _handle_slash(
     permission_gate: PermissionGate,
 ) -> bool:
     """Dispatch slash commands. Returns True if the connection should close."""
-    """Dispatch slash commands."""
     parts = cmd.lstrip("/").split(None, 1)
     name = parts[0].lower() if parts else ""
     arg = parts[1].strip() if len(parts) > 1 else ""

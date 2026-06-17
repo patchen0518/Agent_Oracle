@@ -66,8 +66,6 @@ def main(model, port, yolo, no_stream, host):
             "  2. Run: [bold]ollama serve[/bold]\n"
             "  3. Pull a model: [bold]ollama pull gemma4:12b[/bold]"
         )
-        # Open error page in browser (uses static error.html if present)
-        _open_error_page(cfg.port)
         return
 
     console.print(f"[green]✓[/green] Ollama reachable at {cfg.ollama_host}")
@@ -119,8 +117,3 @@ def main(model, port, yolo, no_stream, host):
     asyncio.run(_serve())
 
 
-def _open_error_page(port: int) -> None:
-    """Try to open a simple error page. Falls back to printing instructions."""
-    error_html = Path(__file__).parent / "ui" / "static" / "error.html"
-    if error_html.exists():
-        webbrowser.open(f"file://{error_html}")

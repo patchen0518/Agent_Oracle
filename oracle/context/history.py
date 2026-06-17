@@ -144,9 +144,3 @@ class HistoryDB:
         )
         self._conn.commit()
 
-    def query_rejected_proposals(self, days: int = 30) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT * FROM rejected_proposals WHERE rejected_at >= datetime('now', ?) ORDER BY id DESC",
-            (f"-{days} days",),
-        ).fetchall()
-        return [dict(r) for r in rows]

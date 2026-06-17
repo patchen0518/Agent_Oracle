@@ -54,20 +54,6 @@ class SessionState:
     _plan_approved: bool = False
 
 
-def _format_tool_summary(messages: list[dict]) -> str:
-    lines = []
-    for msg in messages:
-        if msg.get("role") == "assistant":
-            calls = msg.get("tool_calls") or []
-            for c in calls:
-                fn = c.get("function", {})
-                lines.append(f"- Called {fn.get('name')} with {fn.get('arguments', {})}")
-        elif msg.get("role") == "tool":
-            content = (msg.get("content") or "")[:200]
-            lines.append(f"  → Result: {content}")
-    return "\n".join(lines) or "(no tool calls)"
-
-
 def _estimate_tokens(messages: list[dict]) -> int:
     total = sum(len((m.get("content") or "").encode("utf-8")) for m in messages)
     return total // 3
@@ -201,7 +187,12 @@ async def run_turn(
             # Auto-mode completion check (Mechanism 2)
             if config.mode == "auto" and not session.completion_retry_used:
                 await ws.send_json({"type": "completion_check", "status": "checking"})
-                tool_summary = _format_tool_summary(messages)
+                _ts = (
+                    [f"- Called {c['function']['name']} with {c['function'].get('arguments', {})}"
+                     for m in messages if m.get("role") == "assistant" for c in (m.get("tool_calls") or [])]
+                    + [f"  → Result: {(m.get('content') or '')[:200]}" for m in messages if m.get("role") == "tool"]
+                )
+                tool_summary = "\n".join(_ts) or "(no tool calls)"
                 check_chunk = await llm.chat([{
                     "role": "user",
                     "content": (

@@ -30,20 +30,11 @@ def _check_path_policy(path: str) -> None:
     cwd = Path.cwd().resolve()
     for protected in cfg.core_protected_paths:
         p = (cwd / protected.rstrip("/")).resolve()
-        # Use path-aware containment: resolved == p or resolved is inside p
-        if resolved == p:
+        if resolved == p or resolved.is_relative_to(p):
             raise PermissionError(
                 f"[Path policy] Writing to '{path}' is not permitted. "
                 "Oracle cannot modify its own source code."
             )
-        try:
-            resolved.relative_to(p)
-            raise PermissionError(
-                f"[Path policy] Writing to '{path}' is not permitted. "
-                "Oracle cannot modify its own source code."
-            )
-        except ValueError:
-            pass  # not under this protected path
 
 
 @tool(description="Read file contents, optionally within a line range.", requires_permission=False, read_only=True)
