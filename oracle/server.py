@@ -210,7 +210,7 @@ async def api_post_oracle_md(request: Request) -> JSONResponse:
 
 @app.get("/")
 async def index():
-    return FileResponse(str(_STATIC / "index.html"))
+    return FileResponse(str(_STATIC / "index.html"), headers={"Cache-Control": "no-store"})
 
 
 @app.websocket("/ws/{session_id}")
