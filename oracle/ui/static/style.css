@@ -63,6 +63,23 @@ body {
 .badge-plan    { background: #1e3a5f; color: #60a5fa; }
 .badge-yolo    { background: #7f1d1d; color: #fca5a5; }
 
+#cwd-display {
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+  opacity: 0.7;
+}
+
+#model-display {
+  font-size: 11px;
+  color: var(--accent-light);
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
 #context-bar {
   display: flex;
   align-items: center;
@@ -279,6 +296,41 @@ body {
 .proposal-item { border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; }
 .proposal-item:last-child { border-bottom: none; }
 .proposal-action-badge { font-size: 10px; background: var(--surface2); padding: 1px 6px; border-radius: 3px; color: var(--accent-light); margin-right: 6px; }
+
+/* ── Slash command picker ── */
+#slash-picker {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  max-height: 240px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.slash-item {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.slash-item:hover, .slash-item.active {
+  background: var(--surface2);
+}
+
+.slash-item-cmd {
+  color: var(--accent-light);
+  font-weight: 600;
+  font-size: 13px;
+  min-width: 100px;
+}
+
+.slash-item-desc {
+  color: var(--text-dim);
+  font-size: 12px;
+}
 
 /* ── Input area ── */
 #input-area {

@@ -164,6 +164,7 @@ async def run_turn(
 
     tool_schemas = tool_registry.schemas() if capability == ModelCapability.TOOLS else None
     last_assistant_text = ""
+    _tool_error_counts: dict[str, int] = {}
 
     # 5. Tool loop
     for iteration in range(config.max_tool_iterations):
@@ -275,12 +276,17 @@ async def run_turn(
                 if action == "always":
                     config.auto_approve = True
 
-            # Dispatch
-            try:
-                result = await tool_registry.dispatch(call_name, call_args)
-            except Exception as e:
-                result = f"[Tool error] {type(e).__name__}: {e}"
-                session.tool_errors.append({"tool": call_name, "error": str(e)})
+            # Dispatch (cap per-tool errors at 3 retries)
+            _tool_error_counts.setdefault(call_name, 0)
+            if _tool_error_counts[call_name] >= 3:
+                result = f"[Tool disabled] {call_name} failed 3 times this turn — skipping further calls."
+            else:
+                try:
+                    result = await tool_registry.dispatch(call_name, call_args)
+                except Exception as e:
+                    _tool_error_counts[call_name] += 1
+                    result = f"[Tool error] {type(e).__name__}: {e}"
+                    session.tool_errors.append({"tool": call_name, "error": str(e)})
 
             # Truncate large output
             result_bytes = result.encode("utf-8", errors="replace")

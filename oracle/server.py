@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
 from oracle.agent_loop import SessionState, run_turn
 from oracle.context import compaction
@@ -38,6 +39,84 @@ _capability: ModelCapability = ModelCapability.TOOLS
 _memory: OracleMemory | None = None
 _history_db: HistoryDB | None = None
 _skill_registry: SkillRegistry | None = None
+_uvicorn_server = None  # set by cli.py so /quit can stop the process
+
+
+_AT_SKIP = {'.git', '.venv', 'venv', '__pycache__', 'node_modules',
+             '.oracle', 'dist', 'build', '.mypy_cache', '.pytest_cache', '.ruff_cache'}
+_AT_MAX_SCAN = 2000
+_AT_MAX_RESULTS = 30
+
+
+def _short_cwd() -> str:
+    cwd = Path.cwd()
+    home = Path.home()
+    try:
+        rel = cwd.relative_to(home)
+        return "~" if rel == Path(".") else f"~/{rel}"
+    except ValueError:
+        return str(cwd)
+
+
+def _expand_at_mentions(content: str) -> str:
+    """Replace @path with path + file contents so the LLM sees the file."""
+    cwd = Path.cwd().resolve()
+
+    def _replace(m: re.Match) -> str:
+        path_str = m.group(1)
+        try:
+            resolved = Path(path_str).expanduser().resolve()
+            resolved.relative_to(cwd)       # must stay within project
+            if not resolved.is_file():
+                return m.group(0)
+            text = resolved.read_text(errors="replace")
+            ext = resolved.suffix.lstrip(".")
+            lang = ext or "text"
+            return f"{path_str}\n\n[File: {path_str}]\n```{lang}\n{text}\n```"
+        except Exception:
+            return m.group(0)               # leave unknown paths unchanged
+
+    return re.sub(r'@(\S+)', _replace, content)
+
+
+@app.get("/api/files")
+async def api_files(q: str = "") -> JSONResponse:
+    """Return up to 30 project files matching query string."""
+    cwd = Path.cwd()
+    q_lower = q.lower()
+    results: list[str] = []
+    scanned = 0
+
+    try:
+        for p in cwd.rglob("*"):
+            if scanned >= _AT_MAX_SCAN:
+                break
+            if not p.is_file():
+                continue
+            parts = p.relative_to(cwd).parts
+            # Skip hidden/build dirs (check every directory component)
+            if any(part in _AT_SKIP or part.startswith(".") for part in parts[:-1]):
+                continue
+            if p.name.startswith("."):
+                continue
+            scanned += 1
+            rel = str(p.relative_to(cwd))
+            if not q_lower or q_lower in rel.lower():
+                results.append(rel)
+    except Exception:
+        pass
+
+    if q_lower:
+        results.sort(key=lambda f: (
+            not Path(f).name.lower().startswith(q_lower),
+            not q_lower in Path(f).name.lower(),
+            len(f),
+            f,
+        ))
+    else:
+        results.sort(key=lambda f: (len(f), f))
+
+    return JSONResponse({"files": results[:_AT_MAX_RESULTS]})
 
 
 @app.get("/")
@@ -75,8 +154,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     # Active turn task reference for cancellation
     _turn_task: asyncio.Task | None = None
 
-    # Send initial mode
+    # Send initial state
     await websocket.send_json({"type": "mode", "mode": config.mode})
+    await websocket.send_json({"type": "cwd", "path": _short_cwd()})
+    await websocket.send_json({"type": "model_info", "model": config.model})
 
     try:
         while True:
@@ -111,7 +192,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
             if msg_type == "slash":
                 cmd = raw.get("command", "").strip()
-                await _handle_slash(cmd, session, websocket, config, llm, history_db, skill_registry, permission_gate)
+                if await _handle_slash(cmd, session, websocket, config, llm, history_db, skill_registry, permission_gate):
+                    break
                 continue
 
             if msg_type == "message":
@@ -121,7 +203,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
                 # Detect slash in message body
                 if content.startswith("/"):
-                    await _handle_slash(content, session, websocket, config, llm, history_db, skill_registry, permission_gate)
+                    if await _handle_slash(content, session, websocket, config, llm, history_db, skill_registry, permission_gate):
+                        break
                     continue
 
                 # Reject new messages while a turn is in progress
@@ -129,7 +212,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     await websocket.send_json({"type": "error", "message": "Busy — please wait for the current turn to finish."})
                     continue
 
-                async def _do_turn(msg=content):
+                # Expand @file mentions into their contents
+                expanded = _expand_at_mentions(content)
+
+                async def _do_turn(msg=expanded):
                     try:
                         await run_turn(
                             user_message=msg,
@@ -178,7 +264,8 @@ async def _handle_slash(
     history_db: HistoryDB,
     skill_registry: SkillRegistry,
     permission_gate: PermissionGate,
-) -> None:
+) -> bool:
+    """Dispatch slash commands. Returns True if the connection should close."""
     """Dispatch slash commands."""
     parts = cmd.lstrip("/").split(None, 1)
     name = parts[0].lower() if parts else ""
@@ -286,6 +373,7 @@ async def _handle_slash(
                 _llm.model = arg
             new_cap = await detect_capability(arg, config.ollama_host)
             _capability = new_cap
+            await ws.send_json({"type": "model_info", "model": arg})
             await ws.send_json({"type": "system_message", "content": f"Switched to model: {arg} ({new_cap.value})"})
             await ws.send_json({"type": "mode", "mode": config.mode})
 
@@ -303,9 +391,21 @@ async def _handle_slash(
     elif name == "mcp":
         await ws.send_json({"type": "system_message", "content": "MCP support available — configure servers in ~/.oracle/config.toml"})
 
+    elif name == "mode":
+        allowed = {"default", "auto", "plan", "yolo"}
+        if arg not in allowed:
+            await ws.send_json({"type": "system_message", "content": f"Unknown mode '{arg}'. Options: default, auto, plan, yolo"})
+            return False
+        config.mode = arg
+        config.auto_approve = (arg == "yolo")
+        await ws.send_json({"type": "mode", "mode": arg})
+
     elif name == "quit":
         await ws.send_json({"type": "quit_ack"})
         await ws.close()
+        if _uvicorn_server is not None:
+            _uvicorn_server.should_exit = True
+        return True
 
     else:
         # Try as a skill name
@@ -321,6 +421,8 @@ async def _handle_slash(
                 "type": "system_message",
                 "content": f"Unknown command: /{name}. Type /help for a list of commands.",
             })
+
+    return False
 
 
 async def _handle_verify(session: SessionState, ws: WebSocket, llm: OllamaClient) -> None:
@@ -384,6 +486,12 @@ def _help_text() -> str:
 Keyboard shortcuts:
   Enter          Submit message
   Shift+Enter    New line"""
+
+
+def set_uvicorn_server(srv) -> None:
+    """Called from cli.py so /quit can trigger a clean shutdown."""
+    global _uvicorn_server
+    _uvicorn_server = srv
 
 
 def init(

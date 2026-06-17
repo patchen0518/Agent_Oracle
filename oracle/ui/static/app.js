@@ -14,11 +14,39 @@ const ctxFill = document.getElementById("ctx-fill");
 const reconnectBanner = document.getElementById("reconnect-banner");
 const reconnectCount = document.getElementById("reconnect-count");
 const lostBanner = document.getElementById("lost-banner");
+const cwdDisplay = document.getElementById("cwd-display");
+const modelDisplay = document.getElementById("model-display");
+const slashPicker = document.getElementById("slash-picker");
+
+const SLASH_COMMANDS = [
+  { cmd: "/help",      desc: "Show all commands and shortcuts" },
+  { cmd: "/clear",     desc: "Wipe conversation history" },
+  { cmd: "/history",   desc: "Show last 20 messages from this session" },
+  { cmd: "/compact",   desc: "Summarize history to free context" },
+  { cmd: "/model",     desc: "List or switch Ollama model" },
+  { cmd: "/tools",     desc: "List all available tools" },
+  { cmd: "/yolo",      desc: "Toggle auto-approve all actions" },
+  { cmd: "/auto-mode", desc: "Toggle autonomous tool loop" },
+  { cmd: "/plan-mode", desc: "Toggle plan-before-act mode" },
+  { cmd: "/memory",    desc: "Search MemPalace memories" },
+  { cmd: "/verify",    desc: "Review modified files for correctness" },
+  { cmd: "/skills",    desc: "List available skills" },
+  { cmd: "/mcp",       desc: "Show MCP server status" },
+  { cmd: "/quit",      desc: "Stop Oracle and close the tab" },
+];
 
 let ws = null;
 let retries = 0;
 const MAX_RETRIES = 10;
 let generating = false;
+let currentMode = "default";
+const MODE_CYCLE = ["default", "auto", "plan", "yolo"];
+
+// Picker shared state
+let pickerMode = "none";   // "slash" | "at" | "none"
+let pickerIndex = -1;
+let atMentionRange = null; // { start, end } positions in textarea
+let atDebounce = null;
 let currentAssistantBubble = null;
 let currentAssistantText = "";
 
@@ -104,6 +132,14 @@ function handleMessage(msg) {
       break;
     case "proposal_batch":
       appendProposalBatch(msg.proposals || []);
+      break;
+    case "cwd":
+      cwdDisplay.textContent = msg.path;
+      cwdDisplay.title = `Working directory: ${msg.path}`;
+      break;
+    case "model_info":
+      modelDisplay.textContent = msg.model;
+      modelDisplay.title = `Model: ${msg.model}`;
       break;
     case "quit_ack":
       window.close();
@@ -368,8 +404,15 @@ function appendProposalBatch(proposals) {
 // ── Mode badge ────────────────────────────────────────────────────────────────
 
 function updateModeBadge(mode) {
+  currentMode = mode;
   modeBadge.textContent = mode.toUpperCase();
   modeBadge.className = `badge badge-${mode}`;
+}
+
+function cycleMode() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const next = MODE_CYCLE[(MODE_CYCLE.indexOf(currentMode) + 1) % MODE_CYCLE.length];
+  ws.send(JSON.stringify({ type: "slash", command: `/mode ${next}` }));
 }
 
 // ── Context bar ───────────────────────────────────────────────────────────────
@@ -405,6 +448,7 @@ function sendMessage() {
 
   input.value = "";
   input.style.height = "auto";
+  hidePicker();
 }
 
 function setGenerating(value) {
@@ -414,9 +458,201 @@ function setGenerating(value) {
   stopBtn.disabled = !value;
 }
 
+// ── Command / file picker ─────────────────────────────────────────────────────
+
+function hidePicker() {
+  slashPicker.classList.add("hidden");
+  slashPicker.innerHTML = "";
+  pickerIndex = -1;
+  pickerMode = "none";
+  atMentionRange = null;
+}
+
+function setPickerIndex(idx) {
+  const items = slashPicker.querySelectorAll(".slash-item");
+  items.forEach(el => el.classList.remove("active"));
+  if (idx >= 0 && idx < items.length) {
+    items[idx].classList.add("active");
+    items[idx].scrollIntoView({ block: "nearest" });
+  }
+  pickerIndex = idx;
+}
+
+// ── Slash picker ──────────────────────────────────────────────────────────────
+
+function updateSlashPicker() {
+  const val = input.value;
+  if (!val.startsWith("/")) { hidePicker(); return; }
+
+  const query = val.slice(1).toLowerCase();
+  const matches = SLASH_COMMANDS.filter(c => c.cmd.slice(1).startsWith(query));
+  if (!matches.length) { hidePicker(); return; }
+
+  slashPicker.innerHTML = "";
+  pickerIndex = -1;
+  pickerMode = "slash";
+
+  matches.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "slash-item";
+
+    const cmd = document.createElement("span");
+    cmd.className = "slash-item-cmd";
+    cmd.textContent = item.cmd;
+
+    const desc = document.createElement("span");
+    desc.className = "slash-item-desc";
+    desc.textContent = item.desc;
+
+    row.appendChild(cmd);
+    row.appendChild(desc);
+    row.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      selectSlashItem(item.cmd);
+    });
+    slashPicker.appendChild(row);
+  });
+
+  slashPicker.classList.remove("hidden");
+}
+
+function selectSlashItem(cmd) {
+  input.value = cmd + " ";
+  hidePicker();
+  input.focus();
+}
+
+// ── @ file picker ─────────────────────────────────────────────────────────────
+
+function getAtQuery() {
+  const pos = input.selectionStart;
+  const before = input.value.slice(0, pos);
+  const match = before.match(/@(\S*)$/);
+  if (!match) return null;
+  return { query: match[1], start: pos - match[0].length, end: pos };
+}
+
+function updateAtPicker() {
+  const info = getAtQuery();
+  if (!info) { hidePicker(); return; }
+
+  clearTimeout(atDebounce);
+  atDebounce = setTimeout(async () => {
+    try {
+      const resp = await fetch(`/api/files?q=${encodeURIComponent(info.query)}`);
+      const data = await resp.json();
+      if (!data.files || !data.files.length) { hidePicker(); return; }
+      showAtResults(data.files, info);
+    } catch (_) {
+      hidePicker();
+    }
+  }, 150);
+}
+
+function showAtResults(files, info) {
+  atMentionRange = info;
+  slashPicker.innerHTML = "";
+  pickerIndex = -1;
+  pickerMode = "at";
+
+  files.forEach((file) => {
+    const row = document.createElement("div");
+    row.className = "slash-item";
+
+    const parts = file.split("/");
+    const name = document.createElement("span");
+    name.className = "slash-item-cmd";
+    name.textContent = parts[parts.length - 1];
+
+    const path = document.createElement("span");
+    path.className = "slash-item-desc";
+    path.textContent = file;
+
+    row.appendChild(name);
+    row.appendChild(path);
+    row.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      selectAtItem(file);
+    });
+    slashPicker.appendChild(row);
+  });
+
+  slashPicker.classList.remove("hidden");
+}
+
+function selectAtItem(file) {
+  if (!atMentionRange) return;
+  const { start, end } = atMentionRange;
+  const val = input.value;
+  input.value = val.slice(0, start) + "@" + file + val.slice(end);
+  const newPos = start + 1 + file.length;
+  input.setSelectionRange(newPos, newPos);
+  hidePicker();
+  input.focus();
+}
+
+function updatePicker() {
+  const val = input.value;
+  const pos = input.selectionStart;
+  const before = val.slice(0, pos);
+
+  if (before.match(/@(\S*)$/)) {
+    updateAtPicker();
+  } else if (val.startsWith("/")) {
+    updateSlashPicker();
+  } else {
+    hidePicker();
+  }
+}
+
 // ── Events ────────────────────────────────────────────────────────────────────
 
+input.addEventListener("input", () => { updatePicker(); });
+
 input.addEventListener("keydown", (e) => {
+  // Shift+Tab cycles through modes
+  if (e.key === "Tab" && e.shiftKey) {
+    e.preventDefault();
+    cycleMode();
+    return;
+  }
+
+  // Picker navigation
+  if (!slashPicker.classList.contains("hidden")) {
+    const items = slashPicker.querySelectorAll(".slash-item");
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setPickerIndex(Math.min(pickerIndex + 1, items.length - 1));
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setPickerIndex(Math.max(pickerIndex - 1, 0));
+      return;
+    }
+    if (e.key === "Escape") {
+      hidePicker();
+      return;
+    }
+    if (e.key === "Enter" || e.key === "Tab") {
+      if (pickerIndex >= 0) {
+        e.preventDefault();
+        const items = slashPicker.querySelectorAll(".slash-item");
+        const active = items[pickerIndex];
+        if (active) {
+          if (pickerMode === "slash") {
+            const cmd = active.querySelector(".slash-item-cmd").textContent;
+            selectSlashItem(cmd);
+          } else if (pickerMode === "at") {
+            const file = active.querySelector(".slash-item-desc").textContent;
+            selectAtItem(file);
+          }
+        }
+        return;
+      }
+    }
+  }
+
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     if (!generating) sendMessage();

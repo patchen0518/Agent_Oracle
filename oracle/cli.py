@@ -109,6 +109,7 @@ def main(model, port, yolo, no_stream, host):
         log_level="warning",
     )
     server = uvicorn.Server(config)
+    srv.set_uvicorn_server(server)
 
     async def _serve():
         task = asyncio.create_task(_open_browser())

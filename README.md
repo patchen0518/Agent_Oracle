@@ -13,17 +13,45 @@ A local AI agent that runs in your browser, powered by [Ollama](https://ollama.c
 ```bash
 git clone <repo>
 cd local-llm
-python -m venv .venv && source .venv/bin/activate
-pip install -e .
+uv sync
+```
+
+To enable semantic memory (optional):
+
+```bash
+uv sync --extra memory
 ```
 
 ## Run
 
 ```bash
-oracle
+uv run oracle
 ```
 
-Browser opens at `http://localhost:8000`. If Ollama isn't running, Oracle shows a setup page instead of a blank screen.
+Oracle serves from the **current working directory** — run it from any project folder and it will read that project's `ORACLE.md` and `.oracle.toml` automatically.
+
+### Global install
+
+Install Oracle as a uv tool so `oracle` is available from any directory:
+
+```bash
+uv tool install /path/to/local-llm
+
+# With semantic memory:
+uv tool install /path/to/local-llm[memory]
+```
+
+To update after pulling changes:
+
+```bash
+uv tool install --reinstall /path/to/local-llm
+```
+
+To remove:
+
+```bash
+uv tool uninstall oracle
+```
 
 ## Options
 
@@ -39,9 +67,51 @@ Browser opens at `http://localhost:8000`. If Ollama isn't running, Oracle shows 
 oracle --model llama3.2:3b --port 8080
 ```
 
+## File Mentions
+
+Type `@` in your message to reference a file from the current project:
+
+```
+Review @src/auth.py for security issues
+```
+
+Oracle reads the file and injects its contents into the context — the agent sees the full file without needing to call `read_file` first. Only files within the current working directory are accessible.
+
+## Slash Commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show all commands |
+| `/clear` | Wipe in-memory conversation history |
+| `/history` | Show the last 20 messages from this session |
+| `/compact` | Summarize history into one context block (frees context) |
+| `/model [name]` | List installed models, or switch to a model by name |
+| `/mode <name>` | Set mode: `default`, `auto`, `plan`, or `yolo` |
+| `/tools` | List all registered tools |
+| `/yolo` | Toggle auto-approve for all tool actions |
+| `/auto-mode` | Toggle autonomous tool loop (runs to completion without pausing) |
+| `/plan-mode` | Toggle plan-before-act mode (shows plan for approval first) |
+| `/memory <query>` | Search semantic memory for relevant past context |
+| `/verify` | Ask Oracle to review its own modified files for correctness |
+| `/skills` | List available skills |
+| `/<skill-name>` | Activate a skill for the next turn |
+| `/mcp` | Show MCP server connection status |
+| `/quit` | Stop the server |
+
+## Agent Modes
+
+| Mode | Behavior |
+|------|----------|
+| Default | One tool loop per turn; approval required for write/exec tools |
+| Auto | Tool loop runs to completion; auto-checks if task is done |
+| Plan | Generates a numbered plan for your approval before any tools run |
+| YOLO | All tool permissions auto-approved |
+
+Switch modes with `/mode <name>` or `--yolo` at startup.
+
 ## Tools
 
-Oracle has access to these tools (non-read tools require your permission):
+Read-only tools run automatically. Write and exec tools require your approval before running.
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
@@ -55,40 +125,9 @@ Oracle has access to these tools (non-read tools require your permission):
 | `web_fetch` | Required | Fetch and strip a URL to plain text |
 | `web_search` | Required | Search the web (Brave API or DuckDuckGo fallback) |
 
-Permission cards appear in the browser when a tool requires approval. Choose **Allow**, **Deny**, or **Always allow** (auto-approves all tools for the session).
+> **File sandbox:** `read_file`, `write_file`, `edit_file`, `list_dir`, `grep`, and `glob` are restricted to the current working directory. `bash_exec` can reach anywhere on the filesystem but always requires explicit permission.
 
-## Slash Commands
-
-Type any command in the input box (or prefix your message with `/`):
-
-| Command | Description |
-|---------|-------------|
-| `/help` | Show all commands and keyboard shortcuts |
-| `/clear` | Wipe in-memory conversation history |
-| `/history` | Show the last 20 messages from this session |
-| `/compact` | Summarize history into one context block (frees context) |
-| `/model [name]` | List installed models, or switch to a model by name |
-| `/tools` | List all registered tools |
-| `/yolo` | Toggle auto-approve for all tool actions |
-| `/auto-mode` | Toggle autonomous tool loop (runs to completion without pausing) |
-| `/plan-mode` | Toggle plan-before-act mode (shows plan for approval first) |
-| `/memory <query>` | Search semantic memory for relevant past context |
-| `/verify` | Ask Oracle to review its own modified files for correctness |
-| `/skills` | List available skills |
-| `/<skill-name>` | Activate a skill for the next turn |
-| `/mcp` | Show MCP server connection status |
-| `/quit` | Stop the server and close the tab |
-
-## Agent Modes
-
-| Mode | Badge | Behavior |
-|------|-------|----------|
-| Default | grey | One tool loop per turn; permission cards shown |
-| Auto | amber | Tool loop runs to completion; auto-checks if task is done |
-| Plan | blue | Generates a numbered plan for your approval before any tools run |
-| YOLO | red | All tool permissions auto-approved; no cards shown |
-
-Switch modes with `/auto-mode`, `/plan-mode`, `/yolo`, or `--yolo` at startup.
+Each tool is capped at 3 failures per turn.
 
 ## Skills
 
@@ -187,31 +226,20 @@ MCP tools appear in the registry as `mcp:{server}/{tool_name}`. A server that fa
 
 ## Semantic Memory
 
-If [MemPalace](https://github.com/patrickchen/mempalace) is installed, Oracle stores each conversation turn as a semantic memory and retrieves relevant past context at the start of every new turn:
+If [MemPalace](https://github.com/patrickchen/mempalace) is installed, Oracle stores each conversation turn as a semantic memory and retrieves relevant past context at the start of every new turn.
 
-```bash
-pip install -e ".[memory]"
-```
-
-Without MemPalace, Oracle starts cleanly in no-memory mode with a startup warning.
+Without MemPalace, Oracle starts in no-memory mode.
 
 Memories are stored at `~/.oracle/palace/`. Use `/memory <query>` to search them directly.
 
 ## Session Storage
 
-Every session is recorded in `~/.oracle/history.db` (SQLite). This is an append-only audit trail — Oracle never loads past sessions on startup. Each browser open is always a fresh conversation.
+Every session is recorded in `~/.oracle/history.db` (SQLite). Oracle never loads past sessions on startup — each browser open is a fresh conversation.
 
 ## Text-Only Models
 
-Models without native tool support (anything not in Ollama's tools-capable list) use a `<tool_call>{json}</tool_call>` XML fallback automatically detected at startup. All tools work; performance may be lower.
+Models without native tool support use a `<tool_call>{json}</tool_call>` XML fallback, detected automatically at startup. All tools work; performance may be lower.
 
 ## Multi-Tab Protection
 
-Only one Oracle tab can be active at a time. Opening a second tab shows an error banner and the connection is rejected.
-
-## Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `Enter` | Submit message |
-| `Shift+Enter` | Insert newline |
+Only one Oracle tab can be active at a time.

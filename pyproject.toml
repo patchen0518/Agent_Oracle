@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "oracle"
@@ -24,10 +24,3 @@ memory = ["mempalace>=0.1.0"]
 
 [project.scripts]
 oracle = "oracle.cli:main"
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["oracle*"]
-
-[tool.setuptools.package-data]
-oracle = ["ui/static/*"]
