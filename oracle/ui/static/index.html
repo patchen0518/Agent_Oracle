@@ -16,6 +16,8 @@
       <span id="ctx-text">ctx: – / –</span>
       <div id="ctx-progress"><div id="ctx-fill"></div></div>
     </div>
+    <button id="settings-btn" class="btn-icon" title="Settings">⚙</button>
+    <button id="oracle-md-btn" class="btn-icon" title="Edit ORACLE.md">📄</button>
     <button id="stop-btn" class="btn-stop" title="Stop current turn" disabled>■ Stop</button>
   </header>
 
@@ -37,6 +39,89 @@
       autofocus
     ></textarea>
     <button id="send-btn" class="btn-send">Send</button>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settings-overlay" class="modal-overlay hidden">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <span>⚙ Settings</span>
+        <button id="settings-close" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-group">
+          <div class="settings-group-label">Agent <span class="restart-note">⚠ model requires restart or /model to switch live</span></div>
+          <div class="settings-field">
+            <label>Model</label>
+            <input type="text" id="cfg-model" placeholder="gemma4:12b" />
+          </div>
+          <div class="settings-field">
+            <label>Max tool iterations</label>
+            <input type="number" id="cfg-max-iter" min="1" max="200" />
+          </div>
+          <div class="settings-field">
+            <label>Context budget (tokens)</label>
+            <input type="number" id="cfg-ctx-budget" min="1000" step="1000" />
+          </div>
+          <div class="settings-field">
+            <label>Max output (bytes)</label>
+            <input type="number" id="cfg-max-output" min="1024" step="1024" />
+          </div>
+          <div class="settings-field">
+            <label>Memory top K</label>
+            <input type="number" id="cfg-memory-k" min="0" max="20" />
+          </div>
+        </div>
+        <div class="settings-group">
+          <div class="settings-group-label">Search</div>
+          <div class="settings-field">
+            <label>Brave API key</label>
+            <input type="text" id="cfg-brave-key" placeholder="BSA… (optional)" autocomplete="off" />
+          </div>
+        </div>
+        <div class="settings-group">
+          <div class="settings-group-label">Server <span class="restart-note">⚠ requires restart</span></div>
+          <div class="settings-field">
+            <label>Ollama host</label>
+            <input type="text" id="cfg-ollama-host" />
+          </div>
+          <div class="settings-field">
+            <label>Port</label>
+            <input type="number" id="cfg-port" min="1024" max="65535" />
+          </div>
+        </div>
+        <div class="settings-scope">
+          <label><input type="radio" name="cfg-scope" value="local" checked /> Save to local (.oracle.toml)</label>
+          <label><input type="radio" name="cfg-scope" value="global" /> Save to global (~/.oracle/config.toml)</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="settings-cancel" class="btn-modal-cancel">Cancel</button>
+        <button id="settings-save" class="btn-modal-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ORACLE.md editor modal -->
+  <div id="oracle-md-overlay" class="modal-overlay hidden">
+    <div class="modal-panel modal-panel-editor">
+      <div class="modal-header">
+        <span>📄 ORACLE.md</span>
+        <div class="modal-tabs">
+          <button id="oracle-tab-local" class="modal-tab active">Local</button>
+          <button id="oracle-tab-global" class="modal-tab">Global</button>
+        </div>
+        <button id="oracle-md-close" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body modal-body-editor">
+        <textarea id="oracle-textarea" placeholder="# Project Instructions&#10;&#10;Describe your project setup here…"></textarea>
+      </div>
+      <div class="modal-footer">
+        <span id="oracle-path-hint" class="modal-path-hint"></span>
+        <button id="oracle-md-cancel" class="btn-modal-cancel">Cancel</button>
+        <button id="oracle-md-save" class="btn-modal-save">Save</button>
+      </div>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>

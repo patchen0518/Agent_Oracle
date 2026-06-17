@@ -43,7 +43,12 @@ def build(
         mem_lines = "\n".join(f"- {m}" for m in memories)
         parts.append(f"\n[Memory — relevant prior context]\n{mem_lines}")
 
-    # Project instructions (ORACLE.md)
+    # Global instructions (~/.oracle/ORACLE.md) — applied before project-local
+    global_oracle = Path.home() / ".oracle" / "ORACLE.md"
+    if global_oracle.exists():
+        parts.append(f"\n[Global Instructions]\n{global_oracle.read_text()}")
+
+    # Project instructions (ORACLE.md in cwd) — overrides or extends global
     if project_instructions_file:
         oracle_md = Path(project_instructions_file)
         if oracle_md.exists():

@@ -2,6 +2,8 @@
 
 A local AI agent that runs in your browser, powered by [Ollama](https://ollama.com). Streams responses token-by-token, calls tools with your permission, and remembers context across sessions.
 
+> **Local use only.** Oracle has no authentication. Its `/api/config` endpoint exposes stored credentials (e.g. your Brave API key) to any browser that can reach the server port. Do not run Oracle on a cloud VM, shared server, or any machine reachable from an untrusted network.
+
 ## Requirements
 
 - Python 3.10+

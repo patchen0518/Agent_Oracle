@@ -144,6 +144,44 @@ def _apply_toml(cfg: Config, path: Path) -> None:
         cfg.core_protected_paths = list(v)
 
 
+def save_toml(cfg: Config, scope: str = "local") -> Path:
+    """Persist editable config fields using read-merge-write (preserves unknown keys)."""
+    import tomli_w  # not imported at module level to keep startup lean
+
+    if scope == "global":
+        path = Path.home() / ".oracle" / "config.toml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        path = Path.cwd() / ".oracle.toml"
+
+    # Read existing file so keys we don't own (mcp_servers, evolution fields, etc.) survive
+    data: dict = {}
+    if path.exists():
+        try:
+            with open(path, "rb") as f:
+                data = tomllib.load(f)
+        except Exception:
+            data = {}
+
+    # Overlay only the fields the settings panel exposes
+    data["model"] = cfg.model
+    data["ollama_host"] = cfg.ollama_host
+    data["port"] = cfg.port
+    data["max_tool_iterations"] = cfg.max_tool_iterations
+    data["max_output_bytes"] = cfg.max_output_bytes
+    data["context_token_budget"] = cfg.context_token_budget
+    data["memory_top_k"] = cfg.memory_top_k
+    if cfg.brave_api_key:
+        data["brave_api_key"] = cfg.brave_api_key
+    else:
+        data.pop("brave_api_key", None)
+
+    with open(path, "wb") as f:
+        tomli_w.dump(data, f)
+
+    return path
+
+
 # Module-level active config (set once in cli.py startup)
 _active: Config | None = None
 

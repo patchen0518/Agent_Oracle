@@ -681,6 +681,157 @@ function scrollBottom() {
   chat.scrollTop = chat.scrollHeight;
 }
 
+// ── Settings panel ────────────────────────────────────────────────────────────
+
+const settingsOverlay = document.getElementById("settings-overlay");
+const oracleMdOverlay = document.getElementById("oracle-md-overlay");
+
+document.getElementById("settings-btn").addEventListener("click", openSettings);
+document.getElementById("settings-close").addEventListener("click", closeSettings);
+document.getElementById("settings-cancel").addEventListener("click", closeSettings);
+document.getElementById("settings-save").addEventListener("click", saveSettings);
+
+settingsOverlay.addEventListener("click", (e) => {
+  if (e.target === settingsOverlay) closeSettings();
+});
+
+async function openSettings() {
+  try {
+    const resp = await fetch("/api/config");
+    const cfg = await resp.json();
+    document.getElementById("cfg-model").value = cfg.model || "";
+    document.getElementById("cfg-max-iter").value = cfg.max_tool_iterations ?? 20;
+    document.getElementById("cfg-ctx-budget").value = cfg.context_token_budget ?? 100000;
+    document.getElementById("cfg-max-output").value = cfg.max_output_bytes ?? 16384;
+    document.getElementById("cfg-memory-k").value = cfg.memory_top_k ?? 5;
+    document.getElementById("cfg-brave-key").value = cfg.brave_api_key || "";
+    document.getElementById("cfg-ollama-host").value = cfg.ollama_host || "";
+    document.getElementById("cfg-port").value = cfg.port || 8000;
+    settingsOverlay.classList.remove("hidden");
+  } catch (e) {
+    appendSystemBubble(`⚠ Could not load settings: ${e.message}`);
+  }
+}
+
+function closeSettings() {
+  settingsOverlay.classList.add("hidden");
+}
+
+async function saveSettings() {
+  const scope = document.querySelector('input[name="cfg-scope"]:checked').value;
+  const values = {
+    model: document.getElementById("cfg-model").value.trim(),
+    max_tool_iterations: parseInt(document.getElementById("cfg-max-iter").value, 10),
+    context_token_budget: parseInt(document.getElementById("cfg-ctx-budget").value, 10),
+    max_output_bytes: parseInt(document.getElementById("cfg-max-output").value, 10),
+    memory_top_k: parseInt(document.getElementById("cfg-memory-k").value, 10),
+    brave_api_key: document.getElementById("cfg-brave-key").value.trim(),
+    ollama_host: document.getElementById("cfg-ollama-host").value.trim(),
+    port: parseInt(document.getElementById("cfg-port").value, 10),
+  };
+
+  const saveBtn = document.getElementById("settings-save");
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Saving…";
+
+  try {
+    const resp = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope, values }),
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      closeSettings();
+      appendSystemBubble(`✓ Settings saved to ${result.path}`);
+    } else {
+      appendSystemBubble(`⚠ Save failed: ${result.error}`);
+    }
+  } catch (e) {
+    appendSystemBubble(`⚠ Save failed: ${e.message}`);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = "Save";
+  }
+}
+
+// ── ORACLE.md editor ──────────────────────────────────────────────────────────
+
+let oracleScope = "local";
+
+document.getElementById("oracle-md-btn").addEventListener("click", openOracleEditor);
+document.getElementById("oracle-md-close").addEventListener("click", closeOracleEditor);
+document.getElementById("oracle-md-cancel").addEventListener("click", closeOracleEditor);
+document.getElementById("oracle-md-save").addEventListener("click", saveOracleEditor);
+document.getElementById("oracle-tab-local").addEventListener("click", () => switchOracleTab("local"));
+document.getElementById("oracle-tab-global").addEventListener("click", () => switchOracleTab("global"));
+
+oracleMdOverlay.addEventListener("click", (e) => {
+  if (e.target === oracleMdOverlay) closeOracleEditor();
+});
+
+async function openOracleEditor() {
+  oracleScope = "local";
+  updateOracleTabs();
+  await loadOracleContent();
+  oracleMdOverlay.classList.remove("hidden");
+  document.getElementById("oracle-textarea").focus();
+}
+
+function closeOracleEditor() {
+  oracleMdOverlay.classList.add("hidden");
+}
+
+async function switchOracleTab(scope) {
+  oracleScope = scope;
+  updateOracleTabs();
+  await loadOracleContent();
+}
+
+function updateOracleTabs() {
+  document.getElementById("oracle-tab-local").className = "modal-tab" + (oracleScope === "local" ? " active" : "");
+  document.getElementById("oracle-tab-global").className = "modal-tab" + (oracleScope === "global" ? " active" : "");
+}
+
+async function loadOracleContent() {
+  try {
+    const resp = await fetch(`/api/oracle-md?scope=${oracleScope}`);
+    const data = await resp.json();
+    document.getElementById("oracle-textarea").value = data.content || "";
+    document.getElementById("oracle-path-hint").textContent = data.path || "";
+  } catch (e) {
+    document.getElementById("oracle-textarea").value = "";
+    document.getElementById("oracle-path-hint").textContent = "";
+  }
+}
+
+async function saveOracleEditor() {
+  const content = document.getElementById("oracle-textarea").value;
+  const saveBtn = document.getElementById("oracle-md-save");
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Saving…";
+
+  try {
+    const resp = await fetch("/api/oracle-md", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope: oracleScope, content }),
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      closeOracleEditor();
+      appendSystemBubble(`✓ ORACLE.md saved to ${result.path}`);
+    } else {
+      appendSystemBubble(`⚠ Save failed: ${result.error}`);
+    }
+  } catch (e) {
+    appendSystemBubble(`⚠ Save failed: ${e.message}`);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = "Save";
+  }
+}
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 connect();

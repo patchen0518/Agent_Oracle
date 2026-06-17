@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -117,6 +117,105 @@ async def api_files(q: str = "") -> JSONResponse:
         results.sort(key=lambda f: (len(f), f))
 
     return JSONResponse({"files": results[:_AT_MAX_RESULTS]})
+
+
+@app.get("/api/config")
+async def api_get_config() -> JSONResponse:
+    """Return the current running config as JSON for the settings panel."""
+    cfg = _cfg.get()
+    return JSONResponse({
+        "model": cfg.model,
+        "ollama_host": cfg.ollama_host,
+        "port": cfg.port,
+        "max_tool_iterations": cfg.max_tool_iterations,
+        "max_output_bytes": cfg.max_output_bytes,
+        "context_token_budget": cfg.context_token_budget,
+        "memory_top_k": cfg.memory_top_k,
+        "brave_api_key": cfg.brave_api_key or "",
+    })
+
+
+@app.post("/api/config")
+async def api_post_config(request: Request) -> JSONResponse:
+    """Write config fields to .toml file and apply safe ones to the running process."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+
+    scope = body.get("scope", "local")
+    values = body.get("values", {})
+    cfg = _cfg.get()
+
+    # Apply runtime-safe fields immediately (no restart needed)
+    if "max_tool_iterations" in values:
+        cfg.max_tool_iterations = int(values["max_tool_iterations"])
+    if "max_output_bytes" in values:
+        cfg.max_output_bytes = int(values["max_output_bytes"])
+    if "context_token_budget" in values:
+        cfg.context_token_budget = int(values["context_token_budget"])
+    if "memory_top_k" in values:
+        cfg.memory_top_k = int(values["memory_top_k"])
+    if "brave_api_key" in values:
+        cfg.brave_api_key = values["brave_api_key"] or None
+
+    # Update file-only fields on the cfg object so save_toml writes them correctly
+    # (model/ollama_host/port take effect on next startup)
+    if "model" in values and values["model"]:
+        cfg.model = values["model"]
+    if "ollama_host" in values and values["ollama_host"]:
+        cfg.ollama_host = values["ollama_host"]
+    if "port" in values:
+        cfg.port = int(values["port"])
+
+    try:
+        saved_path = _cfg.save_toml(cfg, scope)
+        return JSONResponse({"ok": True, "path": str(saved_path)})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.get("/api/oracle-md")
+async def api_get_oracle_md(scope: str = "local") -> JSONResponse:
+    """Return the content of the local or global ORACLE.md."""
+    cfg = _cfg.get()
+    path = (
+        Path.home() / ".oracle" / "ORACLE.md"
+        if scope == "global"
+        else Path(cfg.project_instructions_file)
+    )
+    content = ""
+    if path.exists():
+        try:
+            content = path.read_text(errors="replace")
+        except Exception:
+            pass
+    return JSONResponse({"content": content, "path": str(path)})
+
+
+@app.post("/api/oracle-md")
+async def api_post_oracle_md(request: Request) -> JSONResponse:
+    """Write content to the local or global ORACLE.md."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+
+    scope = body.get("scope", "local")
+    content = body.get("content", "")
+    cfg = _cfg.get()
+
+    if scope == "global":
+        path = Path.home() / ".oracle" / "ORACLE.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        path = Path(cfg.project_instructions_file)
+
+    try:
+        path.write_text(content, encoding="utf-8")
+        return JSONResponse({"ok": True, "path": str(path)})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 @app.get("/")
