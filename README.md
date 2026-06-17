@@ -226,9 +226,9 @@ MCP tools appear in the registry as `mcp:{server}/{tool_name}`. A server that fa
 
 ## Semantic Memory
 
-If [MemPalace](https://github.com/patrickchen/mempalace) is installed, Oracle stores each conversation turn as a semantic memory and retrieves relevant past context at the start of every new turn.
+When the `memory` extra is installed, Oracle stores each conversation turn in a local [ChromaDB](https://www.trychroma.com) vector database and retrieves relevant past context at the start of every new turn.
 
-Without MemPalace, Oracle starts in no-memory mode.
+Without it, Oracle starts in no-memory mode.
 
 Memories are stored at `~/.oracle/palace/`. Use `/memory <query>` to search them directly.
 

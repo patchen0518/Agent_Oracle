@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-memory = ["mempalace>=0.1.0"]
+memory = ["chromadb>=0.4.0"]
 
 [project.scripts]
 oracle = "oracle.cli:main"

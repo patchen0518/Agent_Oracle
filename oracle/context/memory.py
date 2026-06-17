@@ -1,58 +1,64 @@
-"""MemPalace semantic memory — degrades gracefully if not installed."""
+"""Semantic memory via ChromaDB — degrades gracefully if not installed."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from uuid import uuid4
 
 log = logging.getLogger(__name__)
 
 try:
-    from mempalace import Palace  # type: ignore[import-not-found]
+    import chromadb  # type: ignore[import-not-found]
     _AVAILABLE = True
 except ImportError:
     _AVAILABLE = False
-    log.warning("mempalace not installed — running in no-memory mode")
+    log.warning("chromadb not installed — running in no-memory mode")
 
 
 class OracleMemory:
-    """Semantic memory via MemPalace. No-ops when unavailable."""
+    """Persistent semantic memory backed by ChromaDB. No-ops when unavailable."""
 
     def __init__(self, palace_path: str = "~/.oracle/palace") -> None:
-        self._palace = None
+        self._collection = None
         if not _AVAILABLE:
             return
         try:
-            self._palace = Palace(palace_path)
+            import os
+            path = os.path.expanduser(palace_path)
+            client = chromadb.PersistentClient(path=path)
+            self._collection = client.get_or_create_collection("oracle_memory")
         except Exception as e:
-            log.warning(f"MemPalace failed to initialize ({e}) — running in no-memory mode")
+            log.warning(f"ChromaDB failed to initialize ({e}) — running in no-memory mode")
 
     @property
     def available(self) -> bool:
-        return self._palace is not None
+        return self._collection is not None
 
     async def save_turn(self, user_msg: str, assistant_msg: str) -> None:
         if not self.available:
             return
         loop = asyncio.get_running_loop()
         try:
+            doc = f"User: {user_msg}\nOracle: {assistant_msg}"
             await loop.run_in_executor(
                 None,
-                self._palace.add,
-                f"User: {user_msg}\nOracle: {assistant_msg}",
+                lambda: self._collection.add(documents=[doc], ids=[str(uuid4())]),
             )
         except Exception as e:
-            log.warning(f"MemPalace save_turn failed (non-fatal): {e}")
+            log.warning(f"Memory save failed (non-fatal): {e}")
 
     async def retrieve(self, query: str, top_k: int = 5) -> list[str]:
-        if not self.available:
+        if not self.available or not query.strip():
             return []
         loop = asyncio.get_running_loop()
         try:
             results = await loop.run_in_executor(
-                None, self._palace.search, query, top_k
+                None,
+                lambda: self._collection.query(query_texts=[query], n_results=top_k),
             )
-            return [r.content for r in results]
+            docs = results.get("documents", [[]])[0]
+            return docs
         except Exception as e:
-            log.warning(f"MemPalace retrieve failed (non-fatal): {e}")
+            log.warning(f"Memory retrieve failed (non-fatal): {e}")
             return []
