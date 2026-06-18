@@ -367,8 +367,8 @@ async def _handle_slash(
     elif name == "clear":
         session.history.clear()
         session.modified_paths.clear()
-        await ws.send_json({"type": "mode", "mode": config.mode})
-        await ws.send_json({"type": "system_message", "content": "Conversation cleared."})
+        await ws.send_json({"type": "cleared"})
+        await ws.send_json({"type": "context", "used": 0, "budget": config.context_token_budget})
 
     elif name == "history":
         msgs = history_db.get_messages(session.session_db_id, limit=20)

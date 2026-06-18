@@ -68,7 +68,8 @@ function connect() {
   };
 
   ws.onclose = () => {
-    if (!generating) scheduleReconnect();
+    setGenerating(false);
+    scheduleReconnect();
   };
 
   ws.onerror = () => {
@@ -112,6 +113,12 @@ function handleMessage(msg) {
       break;
     case "system_message":
       appendSystemBubble(msg.content);
+      break;
+    case "cleared":
+      chat.innerHTML = "";
+      currentAssistantBubble = null;
+      currentAssistantText = "";
+      appendSystemBubble("Conversation cleared.");
       break;
     case "mode":
       updateModeBadge(msg.mode);
@@ -163,7 +170,7 @@ function appendToken(text) {
 
 function finalizeAssistant() {
   if (currentAssistantBubble) {
-    currentAssistantBubble.innerHTML = renderMarkdown(currentAssistantText);
+    currentAssistantBubble.innerHTML = marked.parse(currentAssistantText);
     scrollBottom();
   }
   currentAssistantBubble = null;
@@ -836,85 +843,6 @@ async function saveOracleEditor() {
     saveBtn.disabled = false;
     saveBtn.textContent = "Save";
   }
-}
-
-// ── Markdown renderer ─────────────────────────────────────────────────────────
-
-function renderMarkdown(md) {
-  function esc(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-  function inline(s) {
-    return esc(s)
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
-      .replace(/~~(.+?)~~/g, '<del>$1</del>')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) =>
-        /^https?:\/\//i.test(url) ? `<a href="${url}">${text}</a>` : text);
-  }
-
-  const lines = md.split('\n');
-  let html = '';
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // Fenced code block
-    if (line.startsWith('```')) {
-      i++;
-      const codeLines = []; while (i < lines.length && !lines[i].startsWith('```')) codeLines.push(lines[i++]);
-      html += `<pre><code>${esc(codeLines.join('\n'))}</code></pre>`;
-      i++; continue;
-    }
-
-    // Heading
-    const hm = line.match(/^(#{1,6}) (.+)/);
-    if (hm) { html += `<h${hm[1].length}>${inline(hm[2])}</h${hm[1].length}>`; i++; continue; }
-
-    // Horizontal rule
-    if (/^[-*_]{3,}\s*$/.test(line)) { html += '<hr>'; i++; continue; }
-
-    // Blockquote
-    if (line.startsWith('> ')) {
-      const bq = []; while (i < lines.length && lines[i].startsWith('> ')) bq.push(lines[i++].slice(2));
-      html += `<blockquote><p>${inline(bq.join(' '))}</p></blockquote>`;
-      continue;
-    }
-
-    // Unordered list
-    if (/^[-*+] /.test(line)) {
-      html += '<ul>';
-      while (i < lines.length && /^[-*+] /.test(lines[i]))
-        html += `<li>${inline(lines[i++].replace(/^[-*+] /, ''))}</li>`;
-      html += '</ul>'; continue;
-    }
-
-    // Ordered list
-    if (/^\d+\. /.test(line)) {
-      html += '<ol>';
-      while (i < lines.length && /^\d+\. /.test(lines[i]))
-        html += `<li>${inline(lines[i++].replace(/^\d+\. /, ''))}</li>`;
-      html += '</ol>'; continue;
-    }
-
-    // Empty line
-    if (!line.trim()) { i++; continue; }
-
-    // Paragraph — collect consecutive plain lines, preserving line breaks
-    const paraLines = [];
-    while (i < lines.length && lines[i].trim() &&
-        !lines[i].startsWith('#') && !lines[i].startsWith('```') &&
-        !lines[i].startsWith('> ') && !/^[-*+] /.test(lines[i]) &&
-        !/^\d+\. /.test(lines[i]) && !/^[-*_]{3,}\s*$/.test(lines[i])) {
-      paraLines.push(lines[i++]);
-    }
-    if (paraLines.length) html += `<p>${paraLines.map(inline).join('<br>')}</p>`;
-  }
-
-  return html;
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────
